@@ -50,7 +50,8 @@ class MemoryCache:
                 self._cache.clear()
 
     def __len__(self):
-        return len(self._cache)
+        with self._lock:
+            return len(self._cache)
 
 
 class DiskCache:
@@ -59,7 +60,7 @@ class DiskCache:
     def __init__(self, db_path: str = "cache/stock_cache.db"):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock: get() 内部调用 delete() 不会死锁
         self._init_db()
 
     def _init_db(self):

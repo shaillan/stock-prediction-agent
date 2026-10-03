@@ -7,6 +7,24 @@ from plotly.subplots import make_subplots
 from typing import Optional, Dict
 
 
+def _safe_values(series, fillna=True):
+    """将 Series/array 转为 plotly 安全的一维数组，去掉 NaN"""
+    import numpy as np
+    if series is None:
+        return None
+    if hasattr(series, "values"):
+        arr = series.values
+    elif isinstance(series, (list, tuple)):
+        arr = np.array(series)
+    else:
+        arr = np.asarray(series)
+    # 转为一维
+    arr = np.asarray(arr).ravel()
+    if fillna:
+        arr = np.where(np.isnan(arr), None, arr)
+    return arr
+
+
 def render_kline_chart(
     kline_data: pd.DataFrame,
     indicators: Optional[Dict] = None,
@@ -38,11 +56,15 @@ def render_kline_chart(
 
     # 确保数据类型正确
     df = kline_data.copy()
+    # 日期标准化
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
     for col in ["open", "high", "low", "close", "volume"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
+    # 去掉包含 NaN 的行（前几行可能没有完整指标）
     df = df.dropna(subset=["open", "high", "low", "close"])
+    df = df.reset_index(drop=True)
 
     # 创建子图布局：K线主图 + 成交量 + MACD + RSI
     fig = make_subplots(
@@ -61,11 +83,11 @@ def render_kline_chart(
     # ===== Row 1: K线图 =====
     fig.add_trace(
         go.Candlestick(
-            x=df["date"],
-            open=df["open"],
-            high=df["high"],
-            low=df["low"],
-            close=df["close"],
+            x=_safe_values(df["date"], fillna=False),
+            open=_safe_values(df["open"]),
+            high=_safe_values(df["high"]),
+            low=_safe_values(df["low"]),
+            close=_safe_values(df["close"]),
             name="K线",
             increasing_line_color="#e53e3e",
             decreasing_line_color="#38a169",
@@ -79,59 +101,57 @@ def render_kline_chart(
     if indicators:
         for ma_name, color in ma_colors.items():
             if ma_name in indicators:
-                ma_series = indicators[ma_name]
-                if hasattr(ma_series, "values"):
-                    ma_series = ma_series.values
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["date"],
-                        y=ma_series,
-                        name=ma_name.upper(),
-                        line=dict(width=1.2, color=color),
-                        showlegend=True,
-                    ),
-                    row=1, col=1,
-                )
+                ma_series = _safe_values(indicators[ma_name])
+                if ma_series is not None:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=_safe_values(df["date"], fillna=False),
+                            y=ma_series,
+                            name=ma_name.upper(),
+                            line=dict(width=1.2, color=color),
+                            showlegend=True,
+                        ),
+                        row=1, col=1,
+                    )
 
     # 叠加布林带
     if indicators and "boll_upper" in indicators and "boll_lower" in indicators:
-        boll_upper = indicators["boll_upper"]
-        boll_lower = indicators["boll_lower"]
-        if hasattr(boll_upper, "values"):
-            boll_upper = boll_upper.values
-        if hasattr(boll_lower, "values"):
-            boll_lower = boll_lower.values
+        boll_upper = _safe_values(indicators["boll_upper"])
+        boll_lower = _safe_values(indicators["boll_lower"])
+        date_arr = _safe_values(df["date"], fillna=False)
 
-        # 布林带上轨
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"], y=boll_upper,
-                name="布林上轨",
-                line=dict(width=0.8, color="gray", dash="dash"),
-                showlegend=True,
-            ),
-            row=1, col=1,
-        )
-        # 布林带下轨（填充区域）
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"], y=boll_lower,
-                name="布林下轨",
-                line=dict(width=0.8, color="gray", dash="dash"),
-                fill="tonexty",
-                fillcolor="rgba(128, 128, 128, 0.1)",
-                showlegend=True,
-            ),
-            row=1, col=1,
-        )
+        if boll_upper is not None and boll_lower is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=date_arr, y=boll_upper,
+                    name="布林上轨",
+                    line=dict(width=0.8, color="gray", dash="dash"),
+                    showlegend=True,
+                ),
+                row=1, col=1,
+            )
+            fig.add_trace(
+                go.Scatter(
+                    x=date_arr, y=boll_lower,
+                    name="布林下轨",
+                    line=dict(width=0.8, color="gray", dash="dash"),
+                    fill="tonexty",
+                    fillcolor="rgba(128, 128, 128, 0.1)",
+                    showlegend=True,
+                ),
+                row=1, col=1,
+            )
 
     # ===== Row 2: 成交量 =====
-    colors = ["#e53e3e" if close >= open_ else "#38a169"
-              for close, open_ in zip(df["close"], df["open"])]
+    close_arr = _safe_values(df["close"])
+    open_arr = _safe_values(df["open"])
+    vol_arr = _safe_values(df["volume"])
+    colors = ["#e53e3e" if (c is not None and o is not None and c >= o) else "#38a169"
+              for c, o in zip(close_arr, open_arr)]
     fig.add_trace(
         go.Bar(
-            x=df["date"],
-            y=df["volume"],
+            x=_safe_values(df["date"], fillna=False),
+            y=vol_arr,
             name="成交量",
             marker_color=colors,
             showlegend=False,
@@ -141,59 +161,45 @@ def render_kline_chart(
 
     # 成交量均线
     if indicators and "vol_ma5" in indicators:
-        vol_ma = indicators["vol_ma5"]
-        if hasattr(vol_ma, "values"):
-            vol_ma = vol_ma.values
-        fig.add_trace(
-            go.Scatter(
-                x=df["date"], y=vol_ma,
-                name="VOL MA5",
-                line=dict(width=1, color="#FF9800"),
-                showlegend=False,
-            ),
-            row=2, col=1,
-        )
+        vol_ma = _safe_values(indicators["vol_ma5"])
+        if vol_ma is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=_safe_values(df["date"], fillna=False), y=vol_ma,
+                    name="VOL MA5",
+                    line=dict(width=1, color="#FF9800"),
+                    showlegend=False,
+                ),
+                row=2, col=1,
+            )
 
     # ===== Row 3: MACD =====
     if indicators:
-        # DIF 线
+        date_arr = _safe_values(df["date"], fillna=False)
         if "macd_dif" in indicators:
-            dif = indicators["macd_dif"]
-            if hasattr(dif, "values"):
-                dif = dif.values
-            fig.add_trace(
-                go.Scatter(
-                    x=df["date"], y=dif,
-                    name="DIF", line=dict(width=1.2, color="#2196F3"),
-                ),
-                row=3, col=1,
-            )
-        # DEA 线
+            dif = _safe_values(indicators["macd_dif"])
+            if dif is not None:
+                fig.add_trace(
+                    go.Scatter(x=date_arr, y=dif,
+                        name="DIF", line=dict(width=1.2, color="#2196F3")),
+                    row=3, col=1,
+                )
         if "macd_dea" in indicators:
-            dea = indicators["macd_dea"]
-            if hasattr(dea, "values"):
-                dea = dea.values
-            fig.add_trace(
-                go.Scatter(
-                    x=df["date"], y=dea,
-                    name="DEA", line=dict(width=1.2, color="#FF9800"),
-                ),
-                row=3, col=1,
-            )
-        # MACD 柱状图
+            dea = _safe_values(indicators["macd_dea"])
+            if dea is not None:
+                fig.add_trace(
+                    go.Scatter(x=date_arr, y=dea,
+                        name="DEA", line=dict(width=1.2, color="#FF9800")),
+                    row=3, col=1,
+                )
         if "macd_hist" in indicators:
-            hist = indicators["macd_hist"]
-            if hasattr(hist, "values"):
-                hist = hist.values
-            hist_colors = ["#e53e3e" if h >= 0 else "#38a169" for h in hist]
-            fig.add_trace(
-                go.Bar(
-                    x=df["date"], y=hist,
-                    name="MACD柱",
-                    marker_color=hist_colors,
-                ),
-                row=3, col=1,
-            )
+            hist = _safe_values(indicators["macd_hist"])
+            if hist is not None:
+                hist_colors = ["#e53e3e" if (h is not None and h >= 0) else "#38a169" for h in hist]
+                fig.add_trace(
+                    go.Bar(x=date_arr, y=hist, name="MACD柱", marker_color=hist_colors),
+                    row=3, col=1,
+                )
 
         # 零轴参考线
         fig.add_hline(y=0, line_dash="solid", line_color="gray",
@@ -201,20 +207,18 @@ def render_kline_chart(
 
     # ===== Row 4: RSI =====
     if indicators:
+        date_arr = _safe_values(df["date"], fillna=False)
         rsi_colors = {"rsi6": "#e53e3e", "rsi14": "#2196F3", "rsi24": "#9C27B0"}
         for rsi_name, color in rsi_colors.items():
             if rsi_name in indicators:
-                rsi = indicators[rsi_name]
-                if hasattr(rsi, "values"):
-                    rsi = rsi.values
-                fig.add_trace(
-                    go.Scatter(
-                        x=df["date"], y=rsi,
-                        name=rsi_name.upper(),
-                        line=dict(width=1.2, color=color),
-                    ),
-                    row=4, col=1,
-                )
+                rsi = _safe_values(indicators[rsi_name])
+                if rsi is not None:
+                    fig.add_trace(
+                        go.Scatter(x=date_arr, y=rsi,
+                            name=rsi_name.upper(),
+                            line=dict(width=1.2, color=color)),
+                        row=4, col=1,
+                    )
 
         # RSI 参考线 (30 和 70)
         fig.add_hline(y=70, line_dash="dash", line_color="red",

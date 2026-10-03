@@ -124,23 +124,31 @@ def main():
                 from data.akhare_client import AKShareClient
                 from data.cache_manager import CacheManager
                 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+                from tenacity import RetryError
 
                 cache = CacheManager()
                 client = AKShareClient(cache_manager=cache)
 
-                # 获取K线（带超时）
-                with ThreadPoolExecutor(max_workers=1) as executor:
+                # 获取K线（带超时保护）
+                executor = ThreadPoolExecutor(max_workers=1)
+                try:
                     kline_future = executor.submit(
                         client.get_stock_kline,
                         config["stock_code"], "daily",
                         config["start_date"], config["end_date"]
                     )
-                    try:
-                        kline_df = kline_future.result(timeout=20)
-                    except FutureTimeout:
-                        st.error("❌ 获取K线数据超时，请检查网络或稍后重试")
-                        st.session_state.analysis_running = False
-                        return
+                    kline_df = kline_future.result(timeout=25)
+                except FutureTimeout:
+                    st.error("❌ 获取K线数据超时（25秒），AKShare 数据源可能暂时不可用，请稍后重试")
+                    st.info("💡 提示：可尝试切换网络环境或在非交易时段重试")
+                    st.session_state.analysis_running = False
+                    return
+                except RetryError as e:
+                    st.error(f"❌ 无法连接数据源（重试均失败）\n\n> 错误详情：{e.last_attempt.exception() if hasattr(e, 'last_attempt') else e}")
+                    st.session_state.analysis_running = False
+                    return
+                finally:
+                    executor.shutdown(wait=False)  # 不等待可能卡死的线程
 
                 st.session_state.kline_df = kline_df
 
@@ -171,6 +179,13 @@ def main():
             render_progress(status="analyzing")
 
             try:
+                from agent.prefetch import set_pre_fetched, clear as clear_prefetch
+                clear_prefetch()
+                set_pre_fetched(
+                    kline_df=kline_df,
+                    quote=quote,
+                    stock_name=config.get("stock_name", ""),
+                )
                 agent_state = run_agent(
                     stock_code=config["stock_code"],
                     start_date=config["start_date"],
@@ -178,6 +193,7 @@ def main():
                     llm_model=config["llm_model"],
                     llm_api_key=config["llm_api_key"],
                     llm_base_url=config["llm_base_url"],
+                    stock_name=config.get("stock_name", ""),
                 )
 
                 st.session_state.agent_state = agent_state

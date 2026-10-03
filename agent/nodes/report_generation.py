@@ -35,7 +35,7 @@ def report_generation_node(state: AgentState) -> Dict[str, Any]:
             model=state.get("llm_model"),
             api_key=state.get("llm_api_key"),
             base_url=state.get("llm_base_url"),
-            temperature=0.3,
+            temperature=0.5,
         )
 
         response = llm.invoke(prompt)

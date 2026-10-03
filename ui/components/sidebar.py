@@ -105,7 +105,7 @@ def render_sidebar() -> dict:
                     "gpt-4o",
                     "gpt-4-turbo",
                     "gpt-4o-mini",
-                    "deepseek-chat",
+                    "deepseek-v4-flash",
                 ],
                 index=0,
                 help="选择用于分析的 LLM 模型",

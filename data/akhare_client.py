@@ -3,11 +3,8 @@ AKShare 数据获取客户端 - 封装所有 A 股数据接口
 """
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import pandas as pd
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from .cache_manager import CacheManager
 from .models import KlineData, RealtimeQuote, FinancialData, NewsItem
@@ -16,16 +13,40 @@ from .models import KlineData, RealtimeQuote, FinancialData, NewsItem
 class AKShareClient:
     """AKShare 数据获取封装，带缓存和重试"""
 
+    AK_CALL_TIMEOUT = 12  # 单次 AKShare 调用超时秒数
+
     def __init__(self, cache_manager: Optional[CacheManager] = None):
         self.cache = cache_manager or CacheManager()
 
+    @staticmethod
+    def _call_with_timeout(fn, timeout: int = None):
+        """在线程中调用 AKShare 函数，带超时控制
+
+        使用 daemon 线程：超时后线程自动被遗弃，不会阻止进程退出，
+        也不会像 ThreadPoolExecutor 那样 shutdown(wait=True) 死等
+        """
+        import threading
+        t = timeout or AKShareClient.AK_CALL_TIMEOUT
+        result = []
+        error = []
+
+        def wrapper():
+            try:
+                result.append(fn())
+            except Exception as e:
+                error.append(e)
+
+        thread = threading.Thread(target=wrapper, daemon=True)
+        thread.start()
+        thread.join(timeout=t)
+        if thread.is_alive():
+            raise TimeoutError(f"AKShare call timed out after {t}s")
+        if error:
+            raise error[0]
+        return result[0]
+
     # ===================== K线数据 =====================
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=8),
-        retry=retry_if_exception_type((ConnectionError, TimeoutError, OSError)),
-    )
     def get_stock_kline(
         self,
         symbol: str,
@@ -34,7 +55,7 @@ class AKShareClient:
         end_date: str = "",
     ) -> pd.DataFrame:
         """
-        获取 A 股历史 K 线数据
+        获取 A 股历史 K 线数据（东方财富优先，新浪财经备用）
 
         Args:
             symbol: 股票代码，如 "600519"
@@ -54,36 +75,94 @@ class AKShareClient:
             return pd.DataFrame(cached)
 
         logger.info(f"获取K线数据: {symbol}, period={period}, {start_date}~{end_date}")
-        import akshare as ak
 
-        try:
-            df = ak.stock_zh_a_hist(
-                symbol=symbol,
-                period=period,
-                start_date=start_date,
-                end_date=end_date,
-                adjust="qfq",  # 前复权
-            )
-        except Exception as e:
-            # 尝试不带 adjust 参数
-            logger.warning(f"前复权获取失败，尝试默认方式: {e}")
-            df = ak.stock_zh_a_hist(
-                symbol=symbol,
-                period=period,
-                start_date=start_date,
-                end_date=end_date,
-            )
+        # 东方财富优先（更稳定），新浪备用
+        df = self._try_eastmoney_kline(symbol, period, start_date, end_date)
+        if df is None:
+            df = self._try_sina_kline(symbol, start_date, end_date)
 
         if df is None or df.empty:
             raise ValueError(f"未找到股票代码 {symbol} 的K线数据，请检查代码是否正确")
-
-        # 标准化列名
-        df = self._normalize_kline_columns(df)
 
         # 缓存
         from config import settings
         self.cache.set(cache_key, df.to_dict(orient="records"), ttl=settings.kline_cache_ttl)
 
+        return df
+
+    @staticmethod
+    def _to_sina_symbol(symbol: str) -> str:
+        """600519 → sh600519, 000001 → sz000001"""
+        code = symbol.strip()
+        if code.startswith(("6", "68")):
+            return f"sh{code}"
+        else:
+            return f"sz{code}"
+
+    def _try_sina_kline(self, symbol: str, start_date: str, end_date: str):
+        """新浪财经 K 线 (stock_zh_a_daily)"""
+        import akshare as ak
+        sina_sym = self._to_sina_symbol(symbol)
+        logger.info(f"  尝试新浪: {sina_sym}")
+        try:
+            df = self._call_with_timeout(
+                lambda: ak.stock_zh_a_daily(
+                    symbol=sina_sym,
+                    start_date=f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}",
+                    end_date=f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}",
+                    adjust="qfq",
+                )
+            )
+        except Exception:
+            logger.warning(f"  新浪 K 线请求失败或超时")
+            return None
+        if df is not None and not df.empty:
+            df = self._normalize_sina_columns(df)
+            logger.info(f"  ✅ 新浪K线: {len(df)} 条")
+            return df
+        return None
+
+    def _try_eastmoney_kline(self, symbol: str, period: str, start_date: str, end_date: str):
+        """东方财富 K 线 (stock_zh_a_hist)"""
+        import akshare as ak
+        logger.info(f"  尝试东方财富: {symbol}")
+        try:
+            df = self._call_with_timeout(
+                lambda: ak.stock_zh_a_hist(
+                    symbol=symbol, period=period,
+                    start_date=start_date, end_date=end_date,
+                    adjust="qfq",
+                )
+            )
+            if df is not None and not df.empty:
+                df = self._normalize_kline_columns(df)
+                logger.info(f"  ✅ 东方财富K线: {len(df)} 条")
+                return df
+            return None
+        except Exception:
+            logger.warning(f"  东方财富 K 线请求失败或超时")
+            return None
+
+    @staticmethod
+    def _normalize_sina_columns(df: pd.DataFrame) -> pd.DataFrame:
+        """新浪财经列名标准化 + 补充涨跌幅/振幅"""
+        # rename
+        col_map = {
+            "outstanding_share": "outstanding_share",  # 保留
+        }
+        df = df.rename(columns=col_map)
+        # 计算涨跌幅
+        if "close" in df.columns:
+            df["change_pct"] = df["close"].pct_change() * 100
+            df["change_amount"] = df["close"].diff()
+        # 计算振幅
+        if "high" in df.columns and "low" in df.columns and "close" in df.columns:
+            prev_close = df["close"].shift(1)
+            df["amplitude"] = ((df["high"] - df["low"]) / prev_close.replace(0, pd.NA)) * 100
+        # 确保数值类型
+        for col in ["open", "close", "high", "low", "volume", "amount"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
         return df
 
     def _normalize_kline_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -173,7 +252,6 @@ class AKShareClient:
 
     # ===================== 财务数据 =====================
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
     def get_financial_indicators(self, symbol: str) -> Optional[Dict]:
         """获取财务指标（自动回退到备用接口）"""
         cache_key = f"finance_{symbol}"
@@ -204,7 +282,9 @@ class AKShareClient:
         """主接口：stock_financial_analysis_indicator"""
         import akshare as ak
         try:
-            df = ak.stock_financial_analysis_indicator(symbol=symbol)
+            df = self._call_with_timeout(
+                lambda: ak.stock_financial_analysis_indicator(symbol=symbol)
+            )
             if df is None or df.empty or len(df.columns) == 0:
                 return None
             latest = df.iloc[0]
@@ -232,7 +312,9 @@ class AKShareClient:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                df = ak.stock_financial_abstract(symbol=symbol)
+                df = self._call_with_timeout(
+                    lambda: ak.stock_financial_abstract(symbol=symbol)
+                )
 
             if df is None or df.empty:
                 return None
@@ -267,7 +349,6 @@ class AKShareClient:
 
     # ===================== 新闻数据 =====================
 
-    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
     def get_stock_news(self, symbol: str, limit: int = 20) -> List[Dict]:
         """获取个股相关新闻"""
         cache_key = f"news_{symbol}_{limit}"
@@ -280,7 +361,9 @@ class AKShareClient:
 
         try:
             # 使用东方财富个股新闻接口
-            df = ak.stock_news_em(symbol=symbol)
+            df = self._call_with_timeout(
+                lambda: ak.stock_news_em(symbol=symbol)
+            )
 
             if df is None or df.empty:
                 logger.warning(f"未获取到 {symbol} 的新闻")
@@ -312,7 +395,12 @@ class AKShareClient:
         """新闻备用接口"""
         import akshare as ak
 
-        df = ak.stock_info_global_em()
+        try:
+            df = self._call_with_timeout(
+                lambda: ak.stock_info_global_em()
+            )
+        except Exception:
+            return []
         # 筛选相关新闻 - 这是一个简化的备用方案
         return []
 
@@ -325,7 +413,10 @@ class AKShareClient:
 
         try:
             # 获取 A 股股票列表
-            df = ak.stock_info_a_code_name()
+            df = self._call_with_timeout(
+                lambda: ak.stock_info_a_code_name(),
+                timeout=20,  # 这个接口数据量大
+            )
 
             if df is None or df.empty:
                 return []
@@ -355,7 +446,10 @@ class AKShareClient:
         import akshare as ak
 
         try:
-            df = ak.stock_info_a_code_name()
+            df = self._call_with_timeout(
+                lambda: ak.stock_info_a_code_name(),
+                timeout=15,  # 这个接口数据量大，多给点时间
+            )
             row = df[df["code"] == symbol]
             if not row.empty:
                 return str(row.iloc[0].get("name", row.iloc[0].get("名称", "")))
@@ -368,7 +462,9 @@ class AKShareClient:
         import akshare as ak
 
         try:
-            df = ak.stock_zh_index_spot_em()
+            df = self._call_with_timeout(
+                lambda: ak.stock_zh_index_spot_em()
+            )
             indices = {}
             for _, row in df.iterrows():
                 name = str(row.get("名称", ""))
