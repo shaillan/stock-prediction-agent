@@ -2,7 +2,9 @@
 回测入口
 
 用法:
-    python -m backtest.run                                  # 全池 30 只，近 3 年
+    python -m backtest.run                                  # 全池 30 只，近 3 年，默认信号
+    python -m backtest.run --signals all                    # 一次跑全部候选信号，出排行榜
+    python -m backtest.run --signals trend,rsi_reversal     # 指定几个信号
     python -m backtest.run --stocks 600519,000858           # 指定股票
     python -m backtest.run --start 2022-01-01 --end 2024-12-31
     python -m backtest.run --horizon 5 --threshold 0.02
@@ -37,8 +39,9 @@ from loguru import logger
 # 相对导入只在"整个包被一起导入"时可用，直接跑文件会因为找不到父包而报
 # ImportError: attempted relative import with no known parent package
 from data.stock_registry import StockRegistry
-from backtest.engine import WARMUP_BUFFER_DAYS, backtest_universe
-from backtest.metrics import summarize_by_mode
+from backtest.engine import WARMUP_BUFFER_DAYS, scan_signals
+from backtest.metrics import leaderboard, summarize_by_mode
+from backtest.signals import ALL_SIGNAL_NAMES, resolve_signals, signal_label
 
 DEFAULT_HISTORY_YEARS = 3
 
@@ -56,6 +59,12 @@ def parse_args(argv=None):
         help=f"起始日期 YYYY-MM-DD，默认 {DEFAULT_HISTORY_YEARS} 年前",
     )
     parser.add_argument("--end", default="", help="结束日期 YYYY-MM-DD，默认今天")
+    parser.add_argument(
+        "--signals",
+        default="",
+        help="要评估的信号：默认 trend；all 表示全部候选；也可逗号分隔指定，"
+             f"如 trend,rsi_reversal。可用: {', '.join(ALL_SIGNAL_NAMES)}",
+    )
     parser.add_argument("--horizon", type=int, default=5, help="持有期（交易日），默认 5")
     parser.add_argument(
         "--threshold", type=float, default=0.02, help="判定涨跌的收益阈值，默认 0.02"
@@ -99,12 +108,13 @@ def parse_periods(raw: str) -> list:
     return periods
 
 
-def run_once(codes, start_date, end_date, args, eval_start=None, eval_end=None):
-    """跑一次回测并打印报告，返回明细 DataFrame"""
-    detail = backtest_universe(
+def run_once(codes, start_date, end_date, args, names, eval_start=None, eval_end=None):
+    """跑一次信号扫描并打印排行榜，返回 {信号名: 明细 DataFrame}"""
+    results = scan_signals(
         codes,
         start_date,
         end_date,
+        names,
         horizon=args.horizon,
         threshold=args.threshold,
         mode=args.label,
@@ -113,12 +123,24 @@ def run_once(codes, start_date, end_date, args, eval_start=None, eval_end=None):
         adjust=args.adjust,
     )
 
-    if detail.empty:
+    if all(df.empty for df in results.values()):
         print(f"⚠️ {start_date} ~ {end_date} 没有拿到回测数据，跳过。")
-        return detail
+        return {}
 
-    print(summarize_by_mode(detail, horizon=args.horizon, threshold=args.threshold, mode=args.label))
-    return detail
+    print(leaderboard(
+        results, mode=args.label, threshold=args.threshold, horizon=args.horizon,
+    ))
+
+    # 只选了一个信号时，额外打印它的详细报告（按信号分组 / 按股票……）
+    if len(names) == 1:
+        only = results[names[0]]
+        if not only.empty:
+            print(f"\n【{signal_label(names[0])} 详细报告】\n")
+            print(summarize_by_mode(
+                only, horizon=args.horizon, threshold=args.threshold, mode=args.label,
+            ))
+
+    return results
 
 
 def main(argv=None) -> int:
@@ -131,7 +153,14 @@ def main(argv=None) -> int:
 
     args = parse_args(argv)
     codes = resolve_codes(args.stocks)
-    logger.info(f"回测开始: {len(codes)} 只股票, label={args.label}")
+    try:
+        names = resolve_signals(args.signals)
+    except ValueError as e:
+        print(f"⚠️ {e}")
+        return 1
+
+    logger.info(f"回测开始: {len(codes)} 只股票, {len(names)} 个信号, label={args.label}")
+    print(f"\n评估信号（{len(names)} 个）: {', '.join(signal_label(n) for n in names)}\n")
 
     frames = []
 
@@ -152,7 +181,7 @@ def main(argv=None) -> int:
             print(f"\n\n>>>>>>>>>>>>>>>>>>>>  {period_start} ~ {period_end}  "
                   f"<<<<<<<<<<<<<<<<<<<<\n")
             frames.append(run_once(
-                codes, fetch_start, period_end, args,
+                codes, fetch_start, period_end, args, names,
                 eval_start=eval_start, eval_end=eval_end,
             ))
     else:
@@ -160,10 +189,10 @@ def main(argv=None) -> int:
         start_date = args.start or (
             date.today() - timedelta(days=365 * DEFAULT_HISTORY_YEARS)
         ).strftime("%Y-%m-%d")
-        frames.append(run_once(codes, start_date, end_date, args))
+        frames.append(run_once(codes, start_date, end_date, args, names))
 
-    all_detail = pd.concat([f for f in frames if not f.empty], ignore_index=True) \
-        if any(not f.empty for f in frames) else pd.DataFrame()
+    detail_frames = [df for result in frames for df in result.values() if not df.empty]
+    all_detail = pd.concat(detail_frames, ignore_index=True) if detail_frames else pd.DataFrame()
 
     if all_detail.empty:
         print("⚠️ 没有拿到任何回测数据。请检查网络 / akshare 是否可用，或换一个日期区间。")

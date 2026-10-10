@@ -8,7 +8,7 @@ from loguru import logger
 
 from langgraph.graph import StateGraph, END
 
-from ..state import AgentState
+from ..state import AgentState, TechAgentInput, TechAgentOutput
 from ..prompts.system_prompts import build_technical_prompt
 from data.technical_indicators import TechnicalIndicatorCalculator
 from utils.llm_factory import create_chat_model
@@ -21,7 +21,8 @@ def _calc_indicators(state: AgentState) -> Dict[str, Any]:
     kline_data = state.get("kline_data")
     if kline_data is None or (hasattr(kline_data, "empty") and kline_data.empty):
         return {
-            "errors": state.get("errors", []) + ["缺少K线数据，无法进行技术分析"],
+            # 只返回本次新增的错误：errors 带 add reducer，会自动与已有列表拼接
+            "errors": ["缺少K线数据，无法进行技术分析"],
             "technical_analysis_result": "## 技术分析\n\n⚠️ 由于缺少K线数据，无法进行技术分析。",
         }
 
@@ -40,7 +41,7 @@ def _calc_indicators(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"  ❌ 指标计算失败: {e}")
         return {
-            "errors": state.get("errors", []) + [f"技术指标计算失败: {str(e)}"],
+            "errors": [f"技术指标计算失败: {str(e)}"],
         }
 
 
@@ -82,14 +83,14 @@ def _llm_analyze(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"  ❌ LLM 技术解读失败: {e}")
         return {
-            "errors": state.get("errors", []) + [f"技术分析失败: {str(e)}"],
+            "errors": [f"技术分析失败: {str(e)}"],
             "technical_analysis_result": f"## 技术分析\n\n❌ 分析过程出错: {str(e)}",
         }
 
 
 def build_tech_agent() -> StateGraph:
     """构建技术分析子 Agent（2 步流水线：计算 → LLM 解读）"""
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState, input=TechAgentInput, output=TechAgentOutput)
     workflow.add_node("calc", _calc_indicators)
     workflow.add_node("analyze", _llm_analyze)
     workflow.set_entry_point("calc")

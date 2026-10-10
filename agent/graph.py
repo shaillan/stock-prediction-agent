@@ -2,7 +2,11 @@
 主 Agent —— 编排 4 个子 Agent 的串行流水线
 
 拓扑结构:
-  [数据采集] → [技术分析] → [新闻情绪] → [综合预测 → 报告]
+  [数据采集] ─┬─→ 技术分析 ─┬─→ [综合预测 → 报告]
+              └─→ 新闻情绪 ─┘
+
+技术分析与新闻情绪互不依赖（一个只读 kline_data，一个只读 news_data），
+所以并行执行；两者都完成后综合预测才启动。
 """
 from loguru import logger
 
@@ -23,8 +27,8 @@ def build_graph() -> StateGraph:
 
     子 Agent 分工:
     - data_agent:     数据采集（纯代码，不调 LLM）
-    - tech_agent:     技术分析（指标计算 + LLM 解读）
-    - sentiment_agent: 新闻情绪（LLM 分析）          ← 与 tech_agent 并行
+    - tech_agent:     技术分析（指标计算 + LLM 解读）  ┐ 并行，
+    - sentiment_agent: 新闻情绪（LLM 分析）            ┘ 都只依赖 data_agent
     - prediction_agent: 综合预测（LLM）→ 报告生成（LLM）
     """
     workflow = StateGraph(AgentState)
@@ -37,18 +41,22 @@ def build_graph() -> StateGraph:
     # 否则 add_node 会报 ValueError: 'prediction' is already being used as a state key
     workflow.add_node("comprehensive_prediction", build_prediction_agent())
 
-    # ========== 编排并行依赖 ==========
+    # ========== 编排依赖 ==========
     workflow.set_entry_point("data_collection")
 
-    # 串行流水线：数据 → 技术 → 情绪 → 预测
+    # 两条边同时从 data_collection 出发 = 并行执行
+    # （技术分析只读 kline_data，新闻情绪只读 news_data，互不依赖）
     workflow.add_edge("data_collection", "tech_analysis")
-    workflow.add_edge("tech_analysis", "sentiment")
+    workflow.add_edge("data_collection", "sentiment")
+
+    # 汇合点：LangGraph 默认要等所有上游分支完成，才执行 comprehensive_prediction
+    workflow.add_edge("tech_analysis", "comprehensive_prediction")
     workflow.add_edge("sentiment", "comprehensive_prediction")
 
     workflow.add_edge("comprehensive_prediction", END)
 
     compiled = workflow.compile()
-    logger.info("✅ 主 Agent 构建完成（4 子 Agent 串行流水线）")
+    logger.info("✅ 主 Agent 构建完成（数据 → [技术分析 ∥ 新闻情绪] → 综合预测）")
     return compiled
 
 

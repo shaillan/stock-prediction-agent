@@ -7,7 +7,7 @@ from loguru import logger
 
 from langgraph.graph import StateGraph, END
 
-from ..state import AgentState
+from ..state import AgentState, SentimentAgentInput, SentimentAgentOutput
 from ..prompts.system_prompts import build_sentiment_prompt
 from utils.llm_factory import create_chat_model
 
@@ -43,14 +43,16 @@ def _analyze_sentiment(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"  ❌ 新闻情绪分析失败: {e}")
         return {
-            "errors": state.get("errors", []) + [f"新闻情绪分析失败: {str(e)}"],
+            # 只返回本次新增的错误：state 的 errors 带 add reducer，会自动与已有列表拼接。
+            # 这里若再返回 state["errors"]，并行执行时会被 reducer 重复叠加。
+            "errors": [f"新闻情绪分析失败: {str(e)}"],
             "news_sentiment_result": f"## 新闻情绪分析\n\n❌ 分析过程出错: {str(e)}",
         }
 
 
 def build_sentiment_agent() -> StateGraph:
     """构建新闻情绪子 Agent"""
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState, input=SentimentAgentInput, output=SentimentAgentOutput)
     workflow.add_node("analyze", _analyze_sentiment)
     workflow.set_entry_point("analyze")
     workflow.add_edge("analyze", END)

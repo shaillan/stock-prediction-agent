@@ -10,7 +10,7 @@ from loguru import logger
 
 from langgraph.graph import StateGraph, END
 
-from ..state import AgentState
+from ..state import AgentState, PredictionAgentInput, PredictionAgentOutput
 from ..prompts.system_prompts import build_prediction_prompt, build_report_prompt
 from utils.llm_factory import create_chat_model
 
@@ -49,7 +49,8 @@ def _predict(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"  ❌ 综合预测失败: {e}")
         return {
-            "errors": state.get("errors", []) + [f"综合预测失败: {str(e)}"],
+            # 只返回本次新增的错误：errors 带 add reducer，会自动与已有列表拼接
+            "errors": [f"综合预测失败: {str(e)}"],
             "prediction": _get_default_prediction(),
         }
 
@@ -111,7 +112,7 @@ def _generate_report(state: AgentState) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"  ❌ 报告生成失败: {e}")
         return {
-            "errors": state.get("errors", []) + [f"报告生成失败: {str(e)}"],
+            "errors": [f"报告生成失败: {str(e)}"],
             "final_report": _build_fallback_report(state),
             "status": "done",
         }
@@ -213,7 +214,7 @@ def _build_fallback_report(state: AgentState) -> str:
 
 def build_prediction_agent() -> StateGraph:
     """构建综合预测 + 报告子 Agent"""
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(AgentState, input=PredictionAgentInput, output=PredictionAgentOutput)
     workflow.add_node("predict", _predict)
     workflow.add_node("report", _generate_report)
     workflow.set_entry_point("predict")
