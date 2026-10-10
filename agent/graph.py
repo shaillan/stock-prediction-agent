@@ -33,7 +33,9 @@ def build_graph() -> StateGraph:
     workflow.add_node("data_collection", build_data_agent())
     workflow.add_node("tech_analysis", build_tech_agent())
     workflow.add_node("sentiment", build_sentiment_agent())
-    workflow.add_node("prediction", build_prediction_agent())
+    # 注意：节点名不能和 AgentState 的字段重名（状态里已有 "prediction" 字段），
+    # 否则 add_node 会报 ValueError: 'prediction' is already being used as a state key
+    workflow.add_node("comprehensive_prediction", build_prediction_agent())
 
     # ========== 编排并行依赖 ==========
     workflow.set_entry_point("data_collection")
@@ -41,9 +43,9 @@ def build_graph() -> StateGraph:
     # 串行流水线：数据 → 技术 → 情绪 → 预测
     workflow.add_edge("data_collection", "tech_analysis")
     workflow.add_edge("tech_analysis", "sentiment")
-    workflow.add_edge("sentiment", "prediction")
+    workflow.add_edge("sentiment", "comprehensive_prediction")
 
-    workflow.add_edge("prediction", END)
+    workflow.add_edge("comprehensive_prediction", END)
 
     compiled = workflow.compile()
     logger.info("✅ 主 Agent 构建完成（4 子 Agent 串行流水线）")

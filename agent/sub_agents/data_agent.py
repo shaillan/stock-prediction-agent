@@ -57,13 +57,19 @@ def _collect_data(state: AgentState) -> Dict[str, Any]:
     elif need_kline:
         _fetch_all(client, stock_code, start_date, end_date, result)
 
-    # 大盘指数（非阻塞）
+    # 大盘指数（非阻塞，但失败要如实记录 —— 否则报告缺一块市场环境却毫无提示）
     try:
         result["market_index"] = client.get_market_index()
         if result["market_index"]:
             logger.info("  ✅ 大盘指数")
+        else:
+            logger.warning("  ⚠️ 大盘指数返回为空")
+            result["errors"] = result["errors"] + ["大盘指数返回为空，报告将缺少市场环境参考"]
     except Exception as e:
         logger.warning(f"  ⚠️ 大盘指数获取失败（非致命）: {e}")
+        result["errors"] = result["errors"] + [
+            f"大盘指数获取失败，报告将缺少市场环境参考（{type(e).__name__}）"
+        ]
 
     if result.get("kline_data") is None or (
         hasattr(result["kline_data"], "empty") and result["kline_data"].empty

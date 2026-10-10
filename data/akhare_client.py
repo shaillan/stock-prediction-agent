@@ -53,6 +53,7 @@ class AKShareClient:
         period: str = "daily",
         start_date: str = "",
         end_date: str = "",
+        adjust: str = "qfq",
     ) -> pd.DataFrame:
         """
         获取 A 股历史 K 线数据（东方财富优先，新浪财经备用）
@@ -62,6 +63,8 @@ class AKShareClient:
             period: K线周期 "daily" / "weekly" / "monthly"
             start_date: 起始日期 "YYYYMMDD" 或 "YYYY-MM-DD"
             end_date: 结束日期
+            adjust: 复权方式 "qfq"(前复权) / "hfq"(后复权) / ""(不复权)。
+                    回测请用 "hfq"：前复权价格会随新数据重新锚定，历史时点不可复现
 
         Returns:
             DataFrame 包含列: date, open, high, low, close, volume, amount, amplitude, change_pct, turnover
@@ -69,17 +72,17 @@ class AKShareClient:
         start_date = start_date.replace("-", "")
         end_date = end_date.replace("-", "")
 
-        cache_key = f"kline_{symbol}_{period}_{start_date}_{end_date}"
+        cache_key = f"kline_{symbol}_{period}_{start_date}_{end_date}_{adjust}"
         cached = self.cache.get(cache_key)
         if cached is not None:
             return pd.DataFrame(cached)
 
-        logger.info(f"获取K线数据: {symbol}, period={period}, {start_date}~{end_date}")
+        logger.info(f"获取K线数据: {symbol}, period={period}, {start_date}~{end_date}, adjust={adjust}")
 
         # 东方财富优先（更稳定），新浪备用
-        df = self._try_eastmoney_kline(symbol, period, start_date, end_date)
+        df = self._try_eastmoney_kline(symbol, period, start_date, end_date, adjust)
         if df is None:
-            df = self._try_sina_kline(symbol, start_date, end_date)
+            df = self._try_sina_kline(symbol, start_date, end_date, adjust)
 
         if df is None or df.empty:
             raise ValueError(f"未找到股票代码 {symbol} 的K线数据，请检查代码是否正确")
@@ -99,7 +102,7 @@ class AKShareClient:
         else:
             return f"sz{code}"
 
-    def _try_sina_kline(self, symbol: str, start_date: str, end_date: str):
+    def _try_sina_kline(self, symbol: str, start_date: str, end_date: str, adjust: str = "qfq"):
         """新浪财经 K 线 (stock_zh_a_daily)"""
         import akshare as ak
         sina_sym = self._to_sina_symbol(symbol)
@@ -110,7 +113,7 @@ class AKShareClient:
                     symbol=sina_sym,
                     start_date=f"{start_date[:4]}-{start_date[4:6]}-{start_date[6:8]}",
                     end_date=f"{end_date[:4]}-{end_date[4:6]}-{end_date[6:8]}",
-                    adjust="qfq",
+                    adjust=adjust,
                 )
             )
         except Exception:
@@ -122,7 +125,7 @@ class AKShareClient:
             return df
         return None
 
-    def _try_eastmoney_kline(self, symbol: str, period: str, start_date: str, end_date: str):
+    def _try_eastmoney_kline(self, symbol: str, period: str, start_date: str, end_date: str, adjust: str = "qfq"):
         """东方财富 K 线 (stock_zh_a_hist)"""
         import akshare as ak
         logger.info(f"  尝试东方财富: {symbol}")
@@ -131,7 +134,7 @@ class AKShareClient:
                 lambda: ak.stock_zh_a_hist(
                     symbol=symbol, period=period,
                     start_date=start_date, end_date=end_date,
-                    adjust="qfq",
+                    adjust=adjust,
                 )
             )
             if df is not None and not df.empty:
@@ -458,26 +461,27 @@ class AKShareClient:
         return ""
 
     def get_market_index(self) -> Dict[str, float]:
-        """获取主要大盘指数"""
+        """获取主要大盘指数
+
+        失败时直接抛异常，由调用方决定怎么降级。
+        （此前这里吞掉异常返回 {}，调用方无法区分"请求失败"和"成功但没匹配到指数"，
+        结果是失败被静默忽略 —— 报告少了市场环境，界面上却毫无提示。）
+        """
         import akshare as ak
 
-        try:
-            df = self._call_with_timeout(
-                lambda: ak.stock_zh_index_spot_em()
-            )
-            indices = {}
-            for _, row in df.iterrows():
-                name = str(row.get("名称", ""))
-                if "上证" in name:
-                    indices["shanghai"] = float(row.get("最新价", 0))
-                    indices["shanghai_change"] = float(row.get("涨跌幅", 0))
-                elif "深证" in name and "成指" in name:
-                    indices["shenzhen"] = float(row.get("最新价", 0))
-                    indices["shenzhen_change"] = float(row.get("涨跌幅", 0))
-                elif "创业" in name:
-                    indices["chinext"] = float(row.get("最新价", 0))
-                    indices["chinext_change"] = float(row.get("涨跌幅", 0))
-            return indices
-        except Exception as e:
-            logger.error(f"获取大盘指数失败: {e}")
-            return {}
+        df = self._call_with_timeout(
+            lambda: ak.stock_zh_index_spot_em()
+        )
+        indices = {}
+        for _, row in df.iterrows():
+            name = str(row.get("名称", ""))
+            if "上证" in name:
+                indices["shanghai"] = float(row.get("最新价", 0))
+                indices["shanghai_change"] = float(row.get("涨跌幅", 0))
+            elif "深证" in name and "成指" in name:
+                indices["shenzhen"] = float(row.get("最新价", 0))
+                indices["shenzhen_change"] = float(row.get("涨跌幅", 0))
+            elif "创业" in name:
+                indices["chinext"] = float(row.get("最新价", 0))
+                indices["chinext_change"] = float(row.get("涨跌幅", 0))
+        return indices

@@ -84,8 +84,10 @@ def render_analysis_details(
             cols = st.columns(4)
             cols[0].metric("最新价", f"¥{q.get('price', 'N/A')}")
             change_pct = q.get('change_pct', 0)
+            # delta_color="inverse" 让涨显示红色、跌显示绿色（中式约定，Streamlit 默认是反的）
             cols[1].metric("涨跌幅", f"{change_pct:+.2f}%",
-                          delta=f"{change_pct:+.2f}%" if change_pct else None)
+                          delta=f"{change_pct:+.2f}%" if change_pct else None,
+                          delta_color="inverse")
             cols[2].metric("成交量", f"{q.get('volume', 0):,.0f}")
             cols[3].metric("换手率", f"{q.get('turnover', 'N/A')}%")
 

@@ -92,7 +92,8 @@ def _generate_report(state: AgentState) -> Dict[str, Any]:
 
         if quote:
             change_pct = quote.get("change_pct", 0)
-            emoji = "🔴" if change_pct < 0 else ("🟢" if change_pct > 0 else "⚪")
+            # 中国市场约定：红涨绿跌（与欧美相反）
+            emoji = "🔴" if change_pct > 0 else ("🟢" if change_pct < 0 else "⚪")
             header_parts.extend([
                 "",
                 f"| 最新价 | 涨跌幅 | 预测趋势 | 置信度 |",
