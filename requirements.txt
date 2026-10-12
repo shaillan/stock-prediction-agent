@@ -18,6 +18,12 @@ pydantic-settings>=2.3.0
 # ========== 可视化 ==========
 plotly>=5.22.0
 
+# ========== 公告全文检索 RAG ==========
+requests>=2.31.0
+pymupdf>=1.24.0              # PDF 转文本
+sentence-transformers>=2.0.0 # 本地中文 embedding 模型
+chromadb>=0.4.0              # 向量库
+
 # ========== 工具库 ==========
 python-dotenv>=1.0.0
 loguru>=0.7.0

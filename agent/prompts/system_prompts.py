@@ -259,6 +259,7 @@ def build_prediction_prompt(
     financial_data: dict,
     realtime_quote: dict,
     market_index: dict,
+    announcement_context: str = "",
 ) -> str:
     """构建综合预测 Prompt"""
     # 财务数据格式化
@@ -276,6 +277,9 @@ def build_prediction_prompt(
 - 创业板指: {market_index.get('chinext', 'N/A')} (涨跌: {market_index.get('chinext_change', 'N/A')}%)
 """
 
+    # 公告动态（RAG 检索结果，没检索到就整段省略）
+    announcement_str = f"\n\n{announcement_context}" if announcement_context else ""
+
     return f"""## 股票信息
 - 名称：{stock_name}
 - 代码：{stock_code}
@@ -290,7 +294,7 @@ def build_prediction_prompt(
 {technical_analysis}
 
 ## 新闻情绪分析报告
-{sentiment_analysis}
+{sentiment_analysis}{announcement_str}
 
 ## 基本面数据
 {fin_str}
@@ -307,6 +311,7 @@ def build_report_prompt(
     sentiment_analysis: str,
     financial_data: dict,
     prediction: dict,
+    announcement_context: str = "",
 ) -> str:
     """构建最终报告 Prompt"""
     fin_str = "\n".join([f"- {k}: {v}" for k, v in (financial_data or {}).items() if v is not None])
@@ -323,6 +328,9 @@ def build_report_prompt(
 - 目标价：{prediction.get('price_targets', {}).get('target_high', 'N/A')}
 """
 
+    # 公告动态（RAG 检索结果，没检索到就整段省略）
+    announcement_str = f"\n\n{announcement_context}" if announcement_context else ""
+
     return f"""## 股票信息
 - 名称：{stock_name}（{stock_code}）
 
@@ -330,7 +338,7 @@ def build_report_prompt(
 {technical_analysis}
 
 ## 新闻情绪分析结果
-{sentiment_analysis}
+{sentiment_analysis}{announcement_str}
 
 ## 基本面数据
 {fin_str}

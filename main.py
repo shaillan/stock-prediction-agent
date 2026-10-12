@@ -194,6 +194,7 @@ def main():
                     llm_api_key=config["llm_api_key"],
                     llm_base_url=config["llm_base_url"],
                     stock_name=config.get("stock_name", ""),
+                    rag_enabled=config.get("rag_enabled", True),
                 )
 
                 st.session_state.agent_state = agent_state

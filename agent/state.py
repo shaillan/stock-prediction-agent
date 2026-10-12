@@ -41,6 +41,10 @@ class AgentState(TypedDict, total=False):
     # ========== 新闻情绪输出 ==========
     news_sentiment_result: Optional[str]
 
+    # ========== 公告检索输出（RAG） ==========
+    announcement_context: Optional[str]  # 检索到的公告动态文本，空串=无公告/已关闭
+    rag_enabled: bool  # 是否启用公告检索（普通字段：仅 run_agent 写一次）
+
     # ========== 综合预测输出 ==========
     prediction: Optional[Dict]
 
@@ -128,6 +132,7 @@ class PredictionAgentInput(TypedDict, total=False):
     stock_name: str
     technical_analysis_result: Optional[str]
     news_sentiment_result: Optional[str]
+    announcement_context: Optional[str]
     financial_data: Optional[Dict]
     realtime_quote: Optional[Dict]
     market_index: Optional[Dict]

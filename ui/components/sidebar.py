@@ -128,6 +128,14 @@ def render_sidebar() -> dict:
 
         st.markdown("---")
 
+        # 公告检索 RAG 开关
+        rag_enabled = st.toggle(
+            "📢 公告全文检索（RAG）",
+            value=settings.rag_enabled,
+            help="检索该股票近期公告全文，作为预测的额外信号。\n"
+                 "首次分析某只股票需下载公告建索引（约30-60秒），之后走缓存。",
+        )
+
         # 运行按钮
         run_clicked = st.button(
             "🚀 开始分析",
@@ -148,5 +156,6 @@ def render_sidebar() -> dict:
         "llm_model": llm_model,
         "llm_api_key": llm_api_key,
         "llm_base_url": llm_base_url,
+        "rag_enabled": rag_enabled,
         "run_clicked": run_clicked,
     }

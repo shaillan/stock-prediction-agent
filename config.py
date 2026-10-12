@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     agent_max_retries: int = 2
     data_fetch_timeout: int = 15  # AKShare 单次调用超时秒数
 
+    # ========== 公告检索 RAG ==========
+    rag_enabled: bool = True        # 是否启用公告全文检索
+    rag_top_k: int = 3              # 每个研究问题检索的片段数
+    rag_announcement_days: int = 180  # 回溯多少天的公告
+
     # ========== UI 配置 ==========
     page_title: str = "📈 股票智能预测 Agent"
     default_stock: str = "600519"  # 贵州茅台

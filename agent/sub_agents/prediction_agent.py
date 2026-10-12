@@ -28,6 +28,7 @@ def _predict(state: AgentState) -> Dict[str, Any]:
             financial_data=state.get("financial_data", {}),
             realtime_quote=state.get("realtime_quote", {}),
             market_index=state.get("market_index", {}),
+            announcement_context=state.get("announcement_context", "") or "",
         )
 
         llm = create_chat_model(
@@ -67,6 +68,7 @@ def _generate_report(state: AgentState) -> Dict[str, Any]:
             sentiment_analysis=state.get("news_sentiment_result", "暂缺"),
             financial_data=state.get("financial_data", {}),
             prediction=state.get("prediction", {}),
+            announcement_context=state.get("announcement_context", "") or "",
         )
 
         llm = create_chat_model(
