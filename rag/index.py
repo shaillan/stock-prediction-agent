@@ -83,22 +83,63 @@ def build_index(
     persist_dir: str,
     collection_name: str = DEFAULT_COLLECTION,
     model: SentenceTransformer = None,
+    skip_regular_reports: bool = False,
+    drop_director_docs: bool = True,
 ) -> Tuple[int, int]:
     """
     把所有公告切块、编码、存入 chromadb 持久化向量库。
 
+    两类噪音文书在建库时丢弃（都是实测出来的）：
+      skip_regular_reports=True  半年报/年报/季报（见 fetch.is_regular_report）——
+                                 它们占了大半向量库，只会稀释检索
+      drop_director_docs=True    独董模板文书（候选人/提名人声明、述职报告）——
+                                 通篇证监会套话，只为"股东"这种通用词而命中
+
+    drop_director_docs 没有做成开关：这类文书**永远**没有信息价值，不像定期报告
+    偶尔还要翻里面的财务数字。留个参数只是为了能 A/B 验证。
+
     返回 (公告数, 切块数)。
     """
+    from loguru import logger
+
+    from .fetch import _fmt_date, is_director_boilerplate, is_regular_report
+
     model = model or load_embedding_model()
+
+    if skip_regular_reports or drop_director_docs:
+        n_reg = n_dir = 0
+        kept = []
+        for a in announcements:
+            title = a.get("title", "")
+            if skip_regular_reports and is_regular_report(title):
+                n_reg += 1
+                continue
+            if drop_director_docs and is_director_boilerplate(title):
+                n_dir += 1
+                continue
+            kept.append(a)
+        announcements = kept
+        if n_reg or n_dir:
+            logger.info(f"  已过滤 {n_reg} 篇定期报告 + {n_dir} 篇独董模板文书，只留实质公告")
 
     # PersistentClient = 数据落到磁盘，重启不丢
     client = chromadb.PersistentClient(path=persist_dir)
+
+    # 重建前先清空。否则 collection.add 会因 id 重复（同一份公告切出的块同名）报错，
+    # 导致 --rebuild 直接崩掉。
+    try:
+        client.delete_collection(collection_name)
+    except Exception:
+        pass  # 不存在则无需删除
+
     collection = client.get_or_create_collection(
         name=collection_name,
-        metadata={"hnsw:space": "cosine"},  # 用余弦距离衡量向量相似度
+        metadata={
+            "hnsw:space": "cosine",                        # 用余弦距离衡量向量相似度
+            "skip_regular_reports": skip_regular_reports,   # 记下建库口径，供升级后自动重建
+            "drop_director_docs": drop_director_docs,       # 同上
+        },
     )
-
-    from .fetch import _fmt_date
 
     n_docs = 0
     for ann in announcements:
@@ -126,10 +167,35 @@ def load_collection(persist_dir: str, collection_name: str = DEFAULT_COLLECTION)
     return chromadb.PersistentClient(path=persist_dir).get_collection(collection_name)
 
 
-def collection_exists(persist_dir: str, collection_name: str) -> bool:
-    """该集合是否已建好且有内容（避免重复下载 PDF / 重复编码）"""
+def collection_exists(
+    persist_dir: str,
+    collection_name: str,
+    skip_regular_reports: Optional[bool] = None,
+    drop_director_docs: Optional[bool] = None,
+) -> bool:
+    """
+    该集合是否已建好且有内容（避免重复下载 PDF / 重复编码）。
+
+    传入过滤开关时会一并校验"建库口径"是否一致：老版本建的库（含定期报告、
+    或含独董模板文书）在升级后会被判为过期，自动重建一次。
+    不校验口径的话，用户会一直用着那批带噪音的旧向量，还以为改动没生效。
+
+    口径参数传 None 表示"这项不校验"，方便只想看块数的调用方。
+    """
     try:
         col = load_collection(persist_dir, collection_name)
-        return col.count() > 0
+        if col.count() == 0:
+            return False
+        meta = col.metadata or {}
+        for key, expected in (
+            ("skip_regular_reports", skip_regular_reports),
+            ("drop_director_docs", drop_director_docs),
+        ):
+            if expected is None:
+                continue
+            # 老库缺这个键 → 取 False，与期望的 True 不符 → 判过期
+            if bool(meta.get(key, False)) != bool(expected):
+                return False
+        return True
     except Exception:
         return False

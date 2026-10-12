@@ -1,5 +1,5 @@
 """
-分析详情展开面板组件 - 展示技术分析、新闻情绪、基本面等详细内容
+分析详情展开面板组件 - 展示技术分析、新闻情绪、公告检索、基本面等详细内容
 """
 import streamlit as st
 from typing import Dict, Optional
@@ -11,6 +11,9 @@ def render_analysis_details(
     financial_data: Optional[Dict] = None,
     final_report: Optional[str] = None,
     realtime_quote: Optional[Dict] = None,
+    announcement_context: Optional[str] = None,
+    rag_enabled: bool = True,
+    rag_error: Optional[str] = None,
 ) -> None:
     """渲染分析详情展开面板
 
@@ -20,12 +23,16 @@ def render_analysis_details(
         financial_data: 财务指标 Dict
         final_report: 最终完整报告 (Markdown)
         realtime_quote: 实时行情 Dict
+        announcement_context: RAG 检索到的"公告动态"原文，空串/None = 没命中
+        rag_enabled: 侧边栏的公告检索开关，用来区分"没开"和"没命中"
+        rag_error: 公告检索的报错（若有），用来暴露流水线的静默降级
     """
     st.markdown("## 📋 详细分析")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 技术分析",
         "📰 新闻情绪",
+        "📢 公告",
         "💰 基本面",
         "📝 完整报告",
     ])
@@ -44,8 +51,12 @@ def render_analysis_details(
         else:
             st.info("暂无新闻情绪分析数据")
 
-    # ===== Tab 3: 基本面 =====
+    # ===== Tab 3: 公告检索（RAG）=====
     with tab3:
+        _render_announcements(announcement_context, rag_enabled, rag_error)
+
+    # ===== Tab 4: 基本面 =====
+    with tab4:
         if financial_data:
             # 表格展示
             col1, col2 = st.columns(2)
@@ -91,8 +102,8 @@ def render_analysis_details(
             cols[2].metric("成交量", f"{q.get('volume', 0):,.0f}")
             cols[3].metric("换手率", f"{q.get('turnover', 'N/A')}%")
 
-    # ===== Tab 4: 完整报告 =====
-    with tab4:
+    # ===== Tab 5: 完整报告 =====
+    with tab5:
         if final_report:
             st.markdown(final_report)
         else:
@@ -107,3 +118,45 @@ def render_analysis_details(
         AI 预测具有不确定性，过往表现不代表未来收益。
     </div>
     """, unsafe_allow_html=True)
+
+
+def _render_announcements(
+    announcement_context: Optional[str],
+    rag_enabled: bool,
+    rag_error: Optional[str],
+) -> None:
+    """渲染"公告"tab。
+
+    显示的就是 rag.service.build_stock_context 的返回值**原文**——和塞进预测
+    prompt 的那段字符完全一致（agent/prompts/system_prompts.py），便于核对
+    检索是否真的生效。
+
+    三种"空"要分开提示：检索关闭 / 检索报错 / 确实没命中。
+    流水线对公告检索是静默降级的（失败不中断分析，只是少一路信号），
+    不在这里区分的话，RAG 挂掉时界面上一点痕迹都没有。
+    """
+    if announcement_context:
+        n = sum(1 for ln in announcement_context.splitlines() if ln.startswith("- **《"))
+        st.caption(f"命中 {n} 条公告片段 · 以下即流水线实际喂给预测模型的原文")
+        st.markdown(announcement_context)
+        st.markdown("---")
+        st.caption(
+            '想看每条命中的距离 / 关键词得分 / gap：'
+            '`python -m rag.cli diagnose "问题" --code 600519`（详见 rag/TUTORIAL.md）'
+        )
+        return
+
+    if not rag_enabled:
+        st.info("公告全文检索（RAG）已在左侧边栏关闭，本次分析未使用公告信号。")
+        return
+
+    if rag_error:
+        st.error("公告检索失败，本次预测未包含公告信号。")
+        st.caption(f"错误详情：{rag_error}")
+        st.caption("流水线对公告检索是静默降级的——失败不会中断分析，只是少一路信号。")
+        return
+
+    st.info(
+        "本次没有命中公告片段。可能是这只股票在该时间窗内没有公告，"
+        "也可能是公告没命中固定的 6 个研究问题（减持/回购/业绩预告/合同/分红/风险）。"
+    )

@@ -23,6 +23,7 @@ requests>=2.31.0
 pymupdf>=1.24.0              # PDF 转文本
 sentence-transformers>=2.0.0 # 本地中文 embedding 模型
 chromadb>=0.4.0              # 向量库
+jieba>=0.42.1                # 中文分词（混合检索的关键词这一路）
 
 # ========== 工具库 ==========
 python-dotenv>=1.0.0

@@ -257,6 +257,14 @@ def main():
             financial_data=agent_state.get("financial_data"),
             final_report=agent_state.get("final_report"),
             realtime_quote=agent_state.get("realtime_quote"),
+            announcement_context=agent_state.get("announcement_context"),
+            rag_enabled=config.get("rag_enabled", True),
+            # 公告检索失败时节点会静默降级（只塞一条 error 不抛异常），
+            # 这里把那条 error 挑出来，让 tab 里能看见，而不是悄无声息地少一路信号
+            rag_error=next(
+                (e for e in (agent_state.get("errors") or []) if "公告检索" in e),
+                None,
+            ),
         )
 
 
