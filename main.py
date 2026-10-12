@@ -1,5 +1,5 @@
 """
-📈 股票智能预测 Agent - Streamlit 主入口
+📈 股票智能预测工作流 - Streamlit 主入口
 基于 LangGraph + LLM 多源分析 A 股走势
 """
 import sys
@@ -58,7 +58,7 @@ init_session_state()
 def main():
     # 页面标题
     st.markdown(
-        '<div class="main-header">📈 股票智能预测 Agent</div>',
+        '<div class="main-header">📈 股票智能预测工作流</div>',
         unsafe_allow_html=True,
     )
     st.caption("基于 LangGraph + LLM 多源分析 | 技术面 + 消息面 + 基本面 | 仅供参考")
@@ -71,7 +71,7 @@ def main():
     if not st.session_state.analysis_done:
         st.info(
             """
-        ### 👋 欢迎使用股票智能预测 Agent！
+        ### 👋 欢迎使用股票智能预测工作流！
 
         **使用步骤：**
         1. 在左侧选择或输入 A 股股票代码
@@ -113,7 +113,7 @@ def main():
             render_progress(status="idle")
 
         # 使用 Status 上下文管理器
-        with st.status("🤖 AI Agent 分析中...", expanded=True) as status_box:
+        with st.status("🤖 分析中...", expanded=True) as status_box:
 
             # ----- 阶段1: 数据采集 -----
             st.write("📡 正在获取行情数据...")
@@ -171,10 +171,10 @@ def main():
                 st.session_state.analysis_running = False
                 return
 
-            # ----- 阶段2-5: Agent 流水线 -----
+            # ----- 阶段2-5: LLM 工作流 -----
             st.write("---")
 
-            # 运行 Agent
+            # 运行工作流
             st.session_state.progress_status = "analyzing"
             render_progress(status="analyzing")
 
@@ -205,8 +205,8 @@ def main():
                 status_box.update(label="✅ 分析完成!", state="complete")
 
             except Exception as e:
-                logger.exception("Agent 运行异常")
-                st.error(f"❌ Agent 运行失败: {e}")
+                logger.exception("工作流运行异常")
+                st.error(f"❌ 工作流运行失败: {e}")
                 st.session_state.analysis_running = False
                 st.session_state.progress_status = "error"
                 status_box.update(label="❌ 分析失败", state="error")
@@ -274,7 +274,7 @@ def render_footer():
     st.markdown(
         """
         <div style="text-align:center; color:#a0aec0; font-size:0.8rem; padding:1rem;">
-            <p>📈 股票智能预测 Agent | Powered by LangGraph + LLM</p>
+            <p>📈 股票智能预测工作流 | Powered by LangGraph + LLM</p>
             <p>⚠️ 本工具仅供学习研究使用，AI 预测不构成投资建议。股市有风险，投资需谨慎。</p>
         </div>
         """,

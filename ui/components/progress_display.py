@@ -1,5 +1,5 @@
 """
-步骤进度指示器组件 - 显示 Agent 5步流水线进度
+步骤进度指示器组件 - 显示工作流 5 步进度
 """
 import time
 import streamlit as st

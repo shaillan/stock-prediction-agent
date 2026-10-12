@@ -113,7 +113,7 @@ def render_analysis_details(
     st.markdown("""
     <div class="disclaimer">
         <strong>⚠️ 免责声明</strong><br>
-        本报告由 AI 智能体自动生成，所有分析和预测均基于历史数据和公开信息的统计分析，<strong>仅供参考，不构成任何投资建议</strong>。
+        本报告由 LLM 工作流自动生成，所有分析和预测均基于历史数据和公开信息的统计分析，<strong>仅供参考，不构成任何投资建议</strong>。
         股市有风险，投资需谨慎。投资者应当独立做出投资决策，并自行承担投资风险。
         AI 预测具有不确定性，过往表现不代表未来收益。
     </div>

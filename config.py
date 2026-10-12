@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     kdj_params: dict = {"n": 9, "m1": 3, "m2": 3}
     bollinger_params: dict = {"period": 20, "std": 2}
 
-    # ========== Agent 配置 ==========
+    # ========== 工作流配置 ==========
     agent_max_retries: int = 2
     data_fetch_timeout: int = 15  # AKShare 单次调用超时秒数
 
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     rag_announcement_days: int = 180  # 回溯多少天的公告
 
     # ========== UI 配置 ==========
-    page_title: str = "📈 股票智能预测 Agent"
+    page_title: str = "📈 股票智能预测工作流"
     default_stock: str = "600519"  # 贵州茅台
 
     class Config:

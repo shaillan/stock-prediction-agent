@@ -1,7 +1,15 @@
 """
-主 Agent —— 编排子 Agent 的流水线
+主工作流 —— 编排各分析节点
 
-拓扑结构:
+注意：这是**工作流（workflow），不是 Agent**。判断标准只有一条——「谁决定下一步
+做什么」。本图的 7 条边全部硬编码，没有任何 add_conditional_edges；LLM 也没有
+bind_tools，即从不自己调工具、从不知道"工具"这个概念，只拿到代码准备好的材料
+写一段文字。所以控制流由代码决定，LLM 不参与决策。
+
+（目录仍叫 agent/、类仍叫 AgentState，是历史命名，改动会牵动全项目 import，
+故保留；用户可见文案已统一改为"工作流"。）
+
+拓扑结构（静态：5 节点 / 7 边，无条件分支）:
   [数据采集] ─┬─→ 技术分析 ─┬─→ [综合预测 → 报告]
               ├─→ 新闻情绪 ─┤
               └─→ 公告检索 ─┘
@@ -25,9 +33,9 @@ from .sub_agents import (
 
 def build_graph() -> StateGraph:
     """
-    构建主 Agent 工作流
+    构建工作流
 
-    子 Agent 分工:
+    各步骤分工:
     - data_agent:     数据采集（纯代码，不调 LLM）
     - tech_agent:     技术分析（指标计算 + LLM 解读）  ┐
     - sentiment_agent: 新闻情绪（LLM 分析）            ├ 并行，
@@ -36,7 +44,7 @@ def build_graph() -> StateGraph:
     """
     workflow = StateGraph(AgentState)
 
-    # ========== 注册子 Agent 为节点 ==========
+    # ========== 注册各步骤为节点 ==========
     workflow.add_node("data_collection", build_data_agent())
     workflow.add_node("tech_analysis", build_tech_agent())
     workflow.add_node("sentiment", build_sentiment_agent())
@@ -62,7 +70,7 @@ def build_graph() -> StateGraph:
     workflow.add_edge("comprehensive_prediction", END)
 
     compiled = workflow.compile()
-    logger.info("✅ 主 Agent 构建完成（数据 → [技术分析 ∥ 新闻情绪 ∥ 公告检索] → 综合预测）")
+    logger.info("✅ 工作流构建完成（数据 → [技术分析 ∥ 新闻情绪 ∥ 公告检索] → 综合预测）")
     return compiled
 
 
@@ -76,7 +84,7 @@ def run_agent(
     stock_name: str = "",
     rag_enabled: bool = True,
 ) -> AgentState:
-    """运行 Agent 预测流水线"""
+    """运行 LLM 工作流"""
     from config import settings
     from datetime import date, timedelta
 
@@ -99,17 +107,17 @@ def run_agent(
         "llm_base_url": llm_base_url or settings.llm_base_url,
     }
 
-    logger.info(f"🚀 启动 Agent: stock={stock_code}, range={start_date}~{end_date}")
+    logger.info(f"🚀 启动工作流: stock={stock_code}, range={start_date}~{end_date}")
     logger.info(f"   LLM: {initial_state['llm_model']}")
 
     graph = build_graph()
 
     try:
         final_state = graph.invoke(initial_state)
-        logger.info(f"🏁 Agent 完成: status={final_state.get('status')}, errors={len(final_state.get('errors', []))}")
+        logger.info(f"🏁 工作流完成: status={final_state.get('status')}, errors={len(final_state.get('errors', []))}")
         return final_state
     except Exception as e:
-        logger.error(f"❌ Agent 异常: {e}")
+        logger.error(f"❌ 工作流异常: {e}")
         initial_state["status"] = "error"
         initial_state["errors"] = [str(e)]
         return initial_state

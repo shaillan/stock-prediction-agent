@@ -208,7 +208,7 @@ def _build_fallback_report(state: AgentState) -> str:
     parts.extend([
         "",
         "---",
-        "> **⚠️ 免责声明**：本报告由 AI 智能体自动生成，仅供参考，不构成任何投资建议。",
+        "> **⚠️ 免责声明**：本报告由 LLM 工作流自动生成，仅供参考，不构成任何投资建议。",
         "> 股市有风险，投资需谨慎。",
     ])
     return "\n\n".join(parts)
