@@ -20,8 +20,10 @@ def _analyze_sentiment(state: AgentState) -> Dict[str, Any]:
 
     if not news_data:
         logger.info("  暂无新闻，跳过")
+        # 「无新闻」是合法的空结果，不是失败：占位文本就是真实结论，故 sentiment_ok=True
         return {
             "news_sentiment_result": "## 新闻情绪分析\n\n📭 该股票近期暂无相关新闻报道。",
+            "sentiment_ok": True,
         }
 
     try:
@@ -38,15 +40,17 @@ def _analyze_sentiment(state: AgentState) -> Dict[str, Any]:
         analysis_text = response.content if hasattr(response, "content") else str(response)
 
         logger.info("  ✅ 新闻情绪分析完成")
-        return {"news_sentiment_result": analysis_text}
+        return {"news_sentiment_result": analysis_text, "sentiment_ok": True}
 
     except Exception as e:
         logger.error(f"  ❌ 新闻情绪分析失败: {e}")
+        # sentiment_ok=False 是关键：下游不该把「❌ 出错」当真实情绪，主图据此走降级分支
         return {
             # 只返回本次新增的错误：state 的 errors 带 add reducer，会自动与已有列表拼接。
             # 这里若再返回 state["errors"]，并行执行时会被 reducer 重复叠加。
             "errors": [f"新闻情绪分析失败: {str(e)}"],
             "news_sentiment_result": f"## 新闻情绪分析\n\n❌ 分析过程出错: {str(e)}",
+            "sentiment_ok": False,
         }
 
 

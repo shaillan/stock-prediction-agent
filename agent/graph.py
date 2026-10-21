@@ -1,22 +1,27 @@
 """
 主工作流 —— 编排各分析节点
 
-注意：这是**工作流（workflow），不是 Agent**。判断标准只有一条——「谁决定下一步
-做什么」。本图的 7 条边全部硬编码，没有任何 add_conditional_edges；LLM 也没有
-bind_tools，即从不自己调工具、从不知道"工具"这个概念，只拿到代码准备好的材料
-写一段文字。所以控制流由代码决定，LLM 不参与决策。
+注意：这仍然是**工作流（workflow），不是 Agent**，尽管现在有了 1 条条件边。
+判断标准只有一条——「谁决定下一步做什么」。这里的分支条件是代码写死的
+`sentiment_ok / announcement_ok is False`，不是 LLM 临场判断；LLM 依旧没有 bind_tools，
+只拿到代码准备好的材料写一段文字。所以控制流仍由代码决定。
 
-（目录仍叫 agent/、类仍叫 AgentState，是历史命名，改动会牵动全项目 import，
-故保留；用户可见文案已统一改为"工作流"。）
+（加了条件边只是让"出错时的路径"显式化，属于降级设计，不等于把决策权交给模型。）
 
-拓扑结构（静态：5 节点 / 7 边，无条件分支）:
-  [数据采集] ─┬─→ 技术分析 ─┬─→ [综合预测 → 报告]
-              ├─→ 新闻情绪 ─┤
-              └─→ 公告检索 ─┘
+拓扑结构（7 节点：静态边 8 条 + 1 条条件边，2 个去向）:
+  [数据采集] ─┬─→ 技术分析 ─┐
+              ├─→ 新闻情绪 ─┼─→ [汇合/路由] ─┬─ 信号齐全 ───→ [综合预测 → 报告]
+              └─→ 公告检索 ─┘                └─ 有信号缺口 → [降级预测 → 报告]
 
 技术分析、新闻情绪、公告检索三者互不依赖（分别只读 kline_data / news_data /
-stock_code），所以并行执行；三者都完成后综合预测才启动。
+stock_code），所以并行执行；三者都完成后才进入汇合节点。
+汇合后由 `_route_after_join` 决定走哪条路：新闻情绪或公告检索失败（信号级缺口）
+时走降级版——失败那一路在预测 prompt 里换成占位说明、报告头部逐项标注缺口、
+置信度由代码强制封顶 0.6。大盘指数、财务这类**数据级**缺口不换分支，两个分支
+的预测节点都会按缺口逐项标注（见 prediction_agent._collect_gaps）。
 """
+from typing import Any, Dict
+
 from loguru import logger
 
 from langgraph.graph import StateGraph, END
@@ -29,6 +34,34 @@ from .sub_agents import (
     build_prediction_agent,
     analyze_announcements,
 )
+
+
+def _join_branches(state: AgentState) -> Dict[str, Any]:
+    """汇合节点：不写任何状态，只负责等三条并行分支全部完成
+
+    为什么不直接把条件边挂在 sentiment 上：那样 comprehensive_prediction 只会
+    收到两路输入就被触发，而两个预测节点也会同时被调度。先汇合、再判断，语义才明确。
+    """
+    return {}
+
+
+def _route_after_join(state: AgentState) -> str:
+    """唯一的条件路由：信号级数据源有没有产出可用结果
+
+    判据是显式 False 才算失败（sentiment_ok / announcement_ok）；
+    字段缺失按正常处理，避免历史状态/旧调用被误判成降级。
+    数据级缺口（大盘/财务为空）不在这里判断——不需要换分支，预测节点会按缺口逐项标注。
+    """
+    failed = [
+        name for name, ok in (
+            ("新闻情绪", state.get("sentiment_ok")),
+            ("公告检索", state.get("announcement_ok")),
+        ) if ok is False
+    ]
+    if failed:
+        logger.warning(f"⚠️ {'、'.join(failed)}不可用 → 走降级分支（报告将逐项标注缺口，置信度封顶 0.6）")
+        return "degraded"
+    return "normal"
 
 
 def build_graph() -> StateGraph:
@@ -50,9 +83,17 @@ def build_graph() -> StateGraph:
     workflow.add_node("sentiment", build_sentiment_agent())
     # 公告检索是普通函数节点（不是子图），见 announcement_agent.py 的说明
     workflow.add_node("announcement", analyze_announcements)
+
+    # 汇合 + 路由：三条并行分支都完成后（同一 superstep 收尾）才执行
+    workflow.add_node("degradation_router", _join_branches)
+
     # 注意：节点名不能和 AgentState 的字段重名（状态里已有 "prediction" 字段），
     # 否则 add_node 会报 ValueError: 'prediction' is already being used as a state key
     workflow.add_node("comprehensive_prediction", build_prediction_agent())
+    workflow.add_node(
+        "comprehensive_prediction_degraded",
+        build_prediction_agent(degraded=True),
+    )
 
     # ========== 编排依赖 ==========
     workflow.set_entry_point("data_collection")
@@ -62,15 +103,28 @@ def build_graph() -> StateGraph:
     workflow.add_edge("data_collection", "sentiment")
     workflow.add_edge("data_collection", "announcement")
 
-    # 汇合点：LangGraph 默认要等所有上游分支完成，才执行 comprehensive_prediction
-    workflow.add_edge("tech_analysis", "comprehensive_prediction")
-    workflow.add_edge("sentiment", "comprehensive_prediction")
-    workflow.add_edge("announcement", "comprehensive_prediction")
+    # 三条分支先汇合到同一个节点（LangGraph 按 superstep 推进，等三路都完成）
+    workflow.add_edge("tech_analysis", "degradation_router")
+    workflow.add_edge("sentiment", "degradation_router")
+    workflow.add_edge("announcement", "degradation_router")
+
+    # 第一条（也是目前唯一一条）条件边：由 sentiment_ok 决定走正常版还是降级版
+    workflow.add_conditional_edges(
+        "degradation_router",
+        _route_after_join,
+        {
+            "normal": "comprehensive_prediction",
+            "degraded": "comprehensive_prediction_degraded",
+        },
+    )
 
     workflow.add_edge("comprehensive_prediction", END)
+    workflow.add_edge("comprehensive_prediction_degraded", END)
 
     compiled = workflow.compile()
-    logger.info("✅ 工作流构建完成（数据 → [技术分析 ∥ 新闻情绪 ∥ 公告检索] → 综合预测）")
+    logger.info(
+        "✅ 工作流构建完成（数据 → [技术分析 ∥ 新闻情绪 ∥ 公告检索] → 汇合/路由 → 综合预测）"
+    )
     return compiled
 
 

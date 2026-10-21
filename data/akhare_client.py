@@ -256,18 +256,27 @@ class AKShareClient:
     # ===================== 财务数据 =====================
 
     def get_financial_indicators(self, symbol: str) -> Optional[Dict]:
-        """获取财务指标（自动回退到备用接口）"""
+        """获取财务指标（自动回退到备用接口；接口报错时抛出真实原因）
+
+        区分两种「空」：接口正常但确实没数据 → 返回 None（不算错误）；
+        接口报错 → 抛 RuntimeError 带上两个接口各自的失败原因，
+        让调用方记录错误。此前异常被 except 吞掉，网络故障看起来和
+        「暂无数据」一模一样，报告缺了基本面却查不到原因。
+        """
         cache_key = f"finance_{symbol}"
         cached = self.cache.get(cache_key)
         if cached is not None:
             return cached
 
         logger.info(f"获取财务指标: {symbol}")
-        financial = self._try_financial_primary(symbol)
+        errors: list = []
+        financial = self._try_financial_primary(symbol, errors)
         if financial is None:
             logger.info("  主接口未获取到，尝试备用接口...")
-            financial = self._try_financial_sina(symbol)
+            financial = self._try_financial_sina(symbol, errors)
         if financial is None:
+            if errors:
+                raise RuntimeError("；".join(errors)[:300])
             return None
 
         from config import settings
@@ -281,8 +290,8 @@ class AKShareClient:
         except (ValueError, TypeError):
             return None
 
-    def _try_financial_primary(self, symbol: str) -> Optional[Dict]:
-        """主接口：stock_financial_analysis_indicator"""
+    def _try_financial_primary(self, symbol: str, errors: list) -> Optional[Dict]:
+        """主接口：stock_financial_analysis_indicator（报错时把原因记入 errors）"""
         import akshare as ak
         try:
             df = self._call_with_timeout(
@@ -305,11 +314,12 @@ class AKShareClient:
                 "total_market_value": self._safe_float(latest.get("总市值")),
                 "circulating_market_value": self._safe_float(latest.get("流通市值")),
             }
-        except Exception:
+        except Exception as e:
+            errors.append(f"主接口(东财): {type(e).__name__}: {e}")
             return None
 
-    def _try_financial_sina(self, symbol: str) -> Optional[Dict]:
-        """备用接口：stock_financial_abstract（新浪财经）"""
+    def _try_financial_sina(self, symbol: str, errors: list) -> Optional[Dict]:
+        """备用接口：stock_financial_abstract（新浪财经，报错时把原因记入 errors）"""
         import akshare as ak
         import warnings
         try:
@@ -347,7 +357,8 @@ class AKShareClient:
                 "total_market_value": None,
                 "circulating_market_value": None,
             }
-        except Exception:
+        except Exception as e:
+            errors.append(f"备用接口(新浪): {type(e).__name__}: {e}")
             return None
 
     # ===================== 新闻数据 =====================
@@ -464,14 +475,37 @@ class AKShareClient:
         """获取主要大盘指数
 
         失败时直接抛异常，由调用方决定怎么降级。
-        （此前这里吞掉异常返回 {}，调用方无法区分"请求失败"和"成功但没匹配到指数"，
-        结果是失败被静默忽略 —— 报告少了市场环境，界面上却毫无提示。）
+        兜底链路：东财实时接口（重试 1 次）→ 新浪指数日K。
+        （此前只有东财单次请求，一次 ConnectionError 整个市场环境就缺失；
+         新浪的实时接口 stock_zh_index_spot_sina 在当前 akshare 版本上是坏的，
+         所以备用源用日K：最新收盘价 + 相邻两日算涨跌幅，盘中数据会滞后一轮。）
         """
+        import time
         import akshare as ak
 
-        df = self._call_with_timeout(
-            lambda: ak.stock_zh_index_spot_em()
-        )
+        last_err: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                df = self._call_with_timeout(lambda: ak.stock_zh_index_spot_em())
+                indices = self._parse_index_spot(df)
+                if indices:
+                    return indices
+                last_err = RuntimeError("东财指数接口未匹配到三大指数")
+            except Exception as e:
+                last_err = e
+                logger.warning(f"  东财指数接口第 {attempt + 1} 次失败: {e}")
+            if attempt == 0:
+                time.sleep(1)
+
+        try:
+            logger.info("  改用新浪指数日K（最新收盘价，非实时）...")
+            return self._market_index_from_sina_daily()
+        except Exception as e:
+            raise RuntimeError(f"东财与新浪指数接口均失败: {last_err} / {e}") from e
+
+    @staticmethod
+    def _parse_index_spot(df: "pd.DataFrame") -> Dict[str, float]:
+        """解析东财指数实时行情表"""
         indices = {}
         for _, row in df.iterrows():
             name = str(row.get("名称", ""))
@@ -484,4 +518,20 @@ class AKShareClient:
             elif "创业" in name:
                 indices["chinext"] = float(row.get("最新价", 0))
                 indices["chinext_change"] = float(row.get("涨跌幅", 0))
+        return indices
+
+    def _market_index_from_sina_daily(self) -> Dict[str, float]:
+        """备用源：新浪指数日K，涨跌幅 = 最后两个收盘价的比值"""
+        import akshare as ak
+
+        symbols = {"shanghai": "sh000001", "shenzhen": "sz399001", "chinext": "sz399006"}
+        indices = {}
+        for key, sym in symbols.items():
+            df = self._call_with_timeout(lambda s=sym: ak.stock_zh_index_daily(symbol=s))
+            if df is None or len(df) < 2:
+                raise RuntimeError(f"新浪指数日K {sym} 数据不足")
+            last = float(df["close"].iloc[-1])
+            prev = float(df["close"].iloc[-2])
+            indices[key] = last
+            indices[f"{key}_change"] = round((last / prev - 1) * 100, 2)
         return indices

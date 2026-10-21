@@ -40,9 +40,11 @@ class AgentState(TypedDict, total=False):
 
     # ========== 新闻情绪输出 ==========
     news_sentiment_result: Optional[str]
+    sentiment_ok: Optional[bool]  # 新闻情绪是否真正产出可用分析（False = LLM 失败，占位文本是兜底垃圾）
 
     # ========== 公告检索输出（RAG） ==========
-    announcement_context: Optional[str]  # 检索到的公告动态文本，空串=无公告/已关闭
+    announcement_context: Optional[str]  # 检索到的公告动态文本，空串=无公告/已关闭/检索失败
+    announcement_ok: Optional[bool]  # 公告检索是否正常完成（False=检索报错；关闭/无命中不算失败）
     rag_enabled: bool  # 是否启用公告检索（普通字段：仅 run_agent 写一次）
 
     # ========== 综合预测输出 ==========
@@ -124,6 +126,7 @@ class SentimentAgentInput(TypedDict, total=False):
 
 class SentimentAgentOutput(TypedDict, total=False):
     news_sentiment_result: Optional[str]
+    sentiment_ok: Optional[bool]  # 失败时显式 False，供主图后续条件路由（降级升级路线图第 1 步）
     errors: Annotated[List[str], add]
 
 
@@ -132,6 +135,8 @@ class PredictionAgentInput(TypedDict, total=False):
     stock_name: str
     technical_analysis_result: Optional[str]
     news_sentiment_result: Optional[str]
+    sentiment_ok: Optional[bool]  # 信号健康标记：False=该路不可用，预测节点要换占位说明并封顶置信度
+    announcement_ok: Optional[bool]
     announcement_context: Optional[str]
     financial_data: Optional[Dict]
     realtime_quote: Optional[Dict]

@@ -97,18 +97,35 @@ def render_sidebar() -> dict:
         with st.expander("展开配置", expanded=False):
             from config import settings
 
+            from utils.llm_factory import default_base_url_for
+
+            model_options = [
+                "claude-sonnet-4-20250514",
+                "claude-opus-4-20250514",
+                "gpt-4o",
+                "gpt-4-turbo",
+                "gpt-4o-mini",
+                "deepseek-v4-flash",
+                "glm-5.3-flash",
+                "glm-5.3-flashx",
+            ]
+
+            def _sync_base_url():
+                """切换模型时把 Base URL 带到该厂商的默认端点，避免沿用上一家的地址"""
+                auto = default_base_url_for(st.session_state.llm_model_select)
+                if auto:
+                    st.session_state.llm_base_url_input = auto
+                else:
+                    st.session_state.llm_base_url_input = ""
+
             llm_model = st.selectbox(
                 "模型选择",
-                options=[
-                    "claude-sonnet-4-20250514",
-                    "claude-opus-4-20250514",
-                    "gpt-4o",
-                    "gpt-4-turbo",
-                    "gpt-4o-mini",
-                    "deepseek-v4-flash",
-                ],
-                index=0,
-                help="选择用于分析的 LLM 模型",
+                options=model_options,
+                index=model_options.index(settings.llm_model)
+                if settings.llm_model in model_options else 0,
+                key="llm_model_select",
+                on_change=_sync_base_url,
+                help="选择用于分析的 LLM 模型；切换后 Base URL 会自动带出对应厂商的端点",
             )
 
             llm_api_key = st.text_input(
@@ -116,14 +133,22 @@ def render_sidebar() -> dict:
                 value=settings.llm_api_key,
                 type="password",
                 placeholder="输入你的 API Key",
-                help="Claude / OpenAI / 兼容 API 的 Key",
+                help="注意：不同厂商的 Key 不通用，切换模型后请换成对应的 Key",
             )
+
+            # Base URL 用 key 绑定 session_state：切换模型时由上面的回调改写
+            if "llm_base_url_input" not in st.session_state:
+                st.session_state.llm_base_url_input = (
+                    default_base_url_for(settings.llm_model) or settings.llm_base_url
+                )
 
             llm_base_url = st.text_input(
                 "Base URL（可选）",
-                value=settings.llm_base_url,
-                placeholder="留空使用官方API，或填入兼容API地址",
-                help="DeepSeek: https://api.deepseek.com/v1\nOllama: http://localhost:11434/v1",
+                key="llm_base_url_input",
+                placeholder="留空则按模型名自动选择端点",
+                help="智谱 GLM: https://open.bigmodel.cn/api/paas/v4\n"
+                     "DeepSeek: https://api.deepseek.com/v1\n"
+                     "Ollama: http://localhost:11434/v1",
             )
 
         st.markdown("---")

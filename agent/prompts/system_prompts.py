@@ -260,6 +260,7 @@ def build_prediction_prompt(
     realtime_quote: dict,
     market_index: dict,
     announcement_context: str = "",
+    data_gap_note: str = "",
 ) -> str:
     """构建综合预测 Prompt"""
     # 财务数据格式化
@@ -280,10 +281,13 @@ def build_prediction_prompt(
     # 公告动态（RAG 检索结果，没检索到就整段省略）
     announcement_str = f"\n\n{announcement_context}" if announcement_context else ""
 
+    # 缺口说明：缺哪路就写明哪路，放在最前面，防止 LLM 把「没提供」当成「没有风险」
+    gap_str = f"\n## 数据缺口说明\n{data_gap_note}\n" if data_gap_note else ""
+
     return f"""## 股票信息
 - 名称：{stock_name}
 - 代码：{stock_code}
-
+{gap_str}
 ## 实时行情
 {quote_str}
 
@@ -312,6 +316,7 @@ def build_report_prompt(
     financial_data: dict,
     prediction: dict,
     announcement_context: str = "",
+    data_gap_note: str = "",
 ) -> str:
     """构建最终报告 Prompt"""
     fin_str = "\n".join([f"- {k}: {v}" for k, v in (financial_data or {}).items() if v is not None])
@@ -331,9 +336,12 @@ def build_report_prompt(
     # 公告动态（RAG 检索结果，没检索到就整段省略）
     announcement_str = f"\n\n{announcement_context}" if announcement_context else ""
 
+    # 缺口说明：缺哪路就写明哪路，放在最前面，防止 LLM 把「没提供」当成「没有风险」
+    gap_str = f"\n## 数据缺口说明\n{data_gap_note}\n" if data_gap_note else ""
+
     return f"""## 股票信息
 - 名称：{stock_name}（{stock_code}）
-
+{gap_str}
 ## 技术分析结果
 {technical_analysis}
 

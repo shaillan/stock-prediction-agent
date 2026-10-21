@@ -112,7 +112,7 @@ def _fetch_remaining(client, stock_code, result, errors):
                     logger.info(f"  ✅ {label}: {'有数据' if val else '暂无'}")
             except Exception as e:
                 logger.error(f"  ❌ {label}获取失败: {e}")
-                errors.append(f"{label}获取失败（{type(e).__name__}）")
+                errors.append(f"{label}获取失败: {str(e)[:200]}")
 
         for future in not_done:
             label, _ = name_map[future]

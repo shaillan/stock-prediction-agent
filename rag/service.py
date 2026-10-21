@@ -14,7 +14,7 @@ from typing import List, Optional
 from loguru import logger
 
 from .fetch import fetch_announcements
-from .index import build_index, collection_exists
+from .index import build_index, collection_exists, ensure_embedding_model
 from .query import retrieve
 
 # 缓存/向量库根目录（cache/ 已 gitignore）
@@ -46,7 +46,11 @@ def build_stock_context(
     skip_regular_reports: bool = True,
 ) -> str:
     """
-    返回该股票的"公告动态"文本（markdown）。任何失败都返回 ""，绝不抛异常。
+    返回该股票的"公告动态"文本（markdown）。
+
+    检索失败（单个问题、网络抖动）一律降级为空串；唯一会抛出的是
+    EmbeddingModelMissing —— 模型没下载属于"配置问题"，必须让调用方看见提示，
+    而不是伪装成"这只股票没有公告"。
 
     流程：确保向量库已建 → 对每个固定问题检索 → 去重截断 → 拼成文本
 
@@ -82,6 +86,10 @@ def build_stock_context(
         clear_corpus_cache()
 
     # ---- 2. 对每个固定问题检索 ----
+    # 先确认模型在本地：缺模型时立刻抛错（调用方会记录一条可读的错误），
+    # 而不是让 6 个问题各失败一次、日志被 6 条一模一样的 OSError 刷屏。
+    ensure_embedding_model()
+
     questions = questions or DEFAULT_QUESTIONS
     seen = set()          # 按片段文本去重（不同问题可能命中同一段）
     per_title = {}        # 每份公告已贡献几段，防止单一公告刷屏

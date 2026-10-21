@@ -44,16 +44,35 @@ def _local_snapshot(model_name: str) -> Optional[str]:
     return None
 
 
+class EmbeddingModelMissing(RuntimeError):
+    """本地没有 embedding 模型时抛出（不联网兜底，见 load_embedding_model 的说明）"""
+
+
+def ensure_embedding_model(model_name: str = _MODEL_NAME) -> str:
+    """确认模型已在本地，返回快照路径；缺失则抛 EmbeddingModelMissing"""
+    local = _local_snapshot(model_name)
+    if not local:
+        raise EmbeddingModelMissing(
+            f"本地找不到 embedding 模型 {model_name}。\n"
+            f"  为什么不再自动下载：huggingface.co 在国内连不上，联网会静默重试几分钟才失败，"
+            f"整条分析流水线看起来像卡死。\n"
+            f"  修复办法：在项目根目录运行  python -m rag.cli download-model"
+        )
+    return local
+
+
 @lru_cache(maxsize=4)
 def load_embedding_model(model_name: str = _MODEL_NAME) -> SentenceTransformer:
     """
-    加载 embedding 模型。优先用本地快照（零网络），没有才联网下载。
+    加载 embedding 模型，只认本地快照。
 
-    加了 lru_cache：同一进程内只加载一次。否则每检索一个问题都重新加载模型，
-    既慢又会反复触发上面的网络检查（service 层一次要检索 6 个问题）。
+    这里刻意**不再联网下载**：模型缺失时联网会把 6 个检索问题各拖几分钟
+    （lru_cache 不缓存异常，所以每个问题都会重试一遍），最终只得到一句 OSError。
+    改为立刻抛 EmbeddingModelMissing，让调用方快速降级并显示可操作的提示。
+
+    加了 lru_cache：同一进程内只加载一次。
     """
-    local = _local_snapshot(model_name)
-    return SentenceTransformer(local or model_name)
+    return SentenceTransformer(ensure_embedding_model(model_name))
 
 
 def chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> List[str]:

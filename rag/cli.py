@@ -7,10 +7,16 @@
 看检索：  python -m rag.cli retrieve "分红方案是什么？" --code 600519
 看全部：  python -m rag.cli collections
 看喂给：  python -m rag.cli context --code 600519
+下模型：  python -m rag.cli download-model
 """
 import argparse
 import os
 import sys
+
+# ⚠️ 必须在任何 rag / huggingface_hub 导入之前设置。
+# huggingface_hub 在 import 的那一刻就把 endpoint 固化进 constants.ENDPOINT，
+# 之后再改环境变量无效 —— 这正是之前"镜像设了却没生效、去连被墙的官网"的根因。
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 # Windows 控制台默认 GBK，中文/emoji 会乱码或崩溃，统一转成 UTF-8 输出
 if hasattr(sys.stdout, "reconfigure"):
@@ -109,6 +115,22 @@ def cmd_context(args):
     print()
 
 
+def cmd_download_model(args):
+    """下载 embedding 模型到本地缓存（必须在联网环境跑，走 hf-mirror）"""
+    from huggingface_hub import snapshot_download
+
+    from .index import _MODEL_NAME, _local_snapshot
+
+    model = args.model or _MODEL_NAME
+    logger.info(f"从 {os.environ.get('HF_ENDPOINT')} 下载 {model}（约 100MB）...")
+    path = snapshot_download(model)
+    logger.info(f"✅ 下载完成：{path}")
+    if _local_snapshot(model):
+        logger.info("✅ 本地快照校验通过，RAG 检索可以用了")
+    else:
+        logger.error("⚠️ 下载完成但本地快照校验未通过（缺 config.json？），请检查上面的路径")
+
+
 def cmd_diagnose(args):
     """对一个集合算距离分布，判断这次检索有没有分辨力（见 rag/diagnose.py）"""
     from .diagnose import diagnose, render
@@ -159,6 +181,10 @@ def main():
     px.add_argument("--rebuild", action="store_true", help="强制重建索引（重新下 PDF）")
     px.add_argument("--keep-reports", action="store_true", help="保留半年报/年报/季报")
     px.set_defaults(func=cmd_context)
+
+    pm = sub.add_parser("download-model", help="下载 embedding 模型（首次使用/模型丢失时）")
+    pm.add_argument("--model", help="模型名，默认 BAAI/bge-small-zh-v1.5")
+    pm.set_defaults(func=cmd_download_model)
 
     pd = sub.add_parser("diagnose", help="诊断检索有没有分辨力（看 gap）")
     pd.add_argument("question")

@@ -19,12 +19,12 @@ def analyze_announcements(state: AgentState) -> Dict[str, Any]:
     """检索该股票的公告全文，拼成"公告动态"文本"""
     if not state.get("rag_enabled", True):
         logger.info("📢 [AnnouncementAgent] 公告检索已关闭，跳过")
-        return {"announcement_context": ""}
+        return {"announcement_context": "", "announcement_ok": True}
 
     code = state.get("stock_code", "")
     end_date = state.get("end_date", "")
     if not code:
-        return {"announcement_context": ""}
+        return {"announcement_context": "", "announcement_ok": True}
 
     logger.info(f"📢 [AnnouncementAgent] 检索公告 {code}...")
     try:
@@ -34,12 +34,14 @@ def analyze_announcements(state: AgentState) -> Dict[str, Any]:
         text = build_stock_context(code, end_date=end_date or None)
         if not text:
             logger.info("  近期无相关公告")
-        return {"announcement_context": text}
+        return {"announcement_context": text, "announcement_ok": True}
 
     except Exception as e:
         logger.error(f"  ❌ 公告检索失败: {e}")
-        # 降级：返回空文本 + 一条错误，绝不中断流水线
+        # 降级：空文本 + 健康标记 False + 一条错误，绝不中断流水线。
+        # 空串会在预测节点被换成「检索失败」占位说明，不会被当成「无公告」
         return {
             "announcement_context": "",
+            "announcement_ok": False,
             "errors": [f"公告检索失败: {str(e)}"],
         }
