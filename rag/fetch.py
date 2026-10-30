@@ -8,7 +8,9 @@
 import io
 import json
 import os
+import re
 import time
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 import requests
@@ -78,6 +80,77 @@ def resolve_org_id(code: str) -> Optional[str]:
         if item.get("code") == code:
             return item.get("orgId")
     return None
+
+
+def _strip_tags(text: str) -> str:
+    """巨潮在 isHLtitle=true 时会给标题加 <em> 高亮标签，去掉"""
+    return re.sub(r"<[^>]+>", "", text or "").strip()
+
+
+def fetch_announcement_list(
+    code: str,
+    days: int = 90,
+    limit: int = 40,
+    exclude_regular_reports: bool = False,
+) -> List[Dict]:
+    """只拉公告的标题 + 日期 + 链接，**不下载 PDF**。
+
+    简报、异动监控这类场景只需要「公司发了什么公告」，不需要全文；
+    下载并解析 30 份 PDF 要 30 秒以上，而这里一次 HTTP 请求就够。
+
+    和 RAG 建库的口径**故意不同**：那边必须过滤定期报告，因为几百页的
+    股东持股表会切成大量数字碎片、把真信号挤出排行榜；而这里只有标题，
+    「发布了半年报」本身正是用户想知道的重大事件，所以默认**保留**。
+    只过滤独董候选人/提名人声明这类纯模板文书。
+    """
+    org_id = resolve_org_id(code)
+    if not org_id:
+        raise ValueError(f"找不到股票 {code} 的机构ID")
+
+    end = date.today()
+    start = end - timedelta(days=days)
+    payload = {
+        "pageNum": 1, "pageSize": min(limit * 3, 100),
+        "column": "szse", "tabName": "fulltext",
+        "plate": "", "stock": f"{code},{org_id}", "searchkey": "", "secid": "",
+        "category": "", "trade": "",
+        "seDate": f"{start:%Y-%m-%d}~{end:%Y-%m-%d}",
+        "sortName": "", "sortType": "", "isHLtitle": "true",
+    }
+    r = requests.post(_QUERY_URL, data=payload, headers=_HEADERS, timeout=20)
+    r.raise_for_status()
+    anns = r.json().get("announcements") or []
+
+    results: List[Dict] = []
+    for a in anns:
+        title = _strip_tags(a.get("announcementTitle") or "")
+        if not title:
+            continue
+        if is_director_boilerplate(title):
+            continue
+        if exclude_regular_reports and is_regular_report(title):
+            continue
+        rel = a.get("adjunctUrl") or ""
+        results.append({
+            "title": title,
+            "date": _fmt_date(a.get("announcementTime")),
+            "url": _PDF_BASE + rel if rel else "",
+        })
+        if len(results) >= limit:
+            break
+    return _drop_digest_duplicates(results)
+
+
+def _drop_digest_duplicates(items: List[Dict]) -> List[Dict]:
+    """同一份文件常有「正本 + 摘要/英文版」，简报里只留正本"""
+    titles = {i.get("title", "") for i in items}
+    out: List[Dict] = []
+    for item in items:
+        t = item.get("title", "")
+        if any(t.endswith(s) and t[:-len(s)] in titles for s in ("摘要", "英文版")):
+            continue
+        out.append(item)
+    return out
 
 
 def fetch_announcements(

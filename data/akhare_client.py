@@ -166,6 +166,11 @@ class AKShareClient:
         for col in ["open", "close", "high", "low", "volume", "amount"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+        # 新浪的 turnover = 成交量 / 流通股本，是**小数**（0.0031 = 0.31%）；
+        # 东财的"换手率"已经是百分数。不换算的话，同一个字段在两条数据源之间
+        # 差 100 倍，回退到备用源时界面会显示成 0.0031%。
+        if "turnover" in df.columns:
+            df["turnover"] = pd.to_numeric(df["turnover"], errors="coerce") * 100
         return df
 
     def _normalize_kline_columns(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -188,6 +193,11 @@ class AKShareClient:
         for col in ["open", "close", "high", "low", "volume", "amount"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+        # 东财的成交量单位是"手"（1 手 = 100 股），新浪是"股"。不统一的话，
+        # 同一天的数据会因为走了哪条源差 100 倍（成交量轴上一条在 15M、下一条在 150k）。
+        # 这里统一换算成股。
+        if "volume" in df.columns:
+            df["volume"] = df["volume"] * 100
         return df
 
     # ===================== 实时行情 =====================
@@ -383,15 +393,39 @@ class AKShareClient:
                 logger.warning(f"未获取到 {symbol} 的新闻")
                 return []
 
+            # akshare 实际返回的列名是中文（关键词/新闻标题/新闻内容/发布时间/
+            # 文章来源/新闻链接）。以前读 title/标题，全部落空 → 新闻标题一直是空串，
+            # 情绪分析和简报都只能看到日期。保留英文键名做兼容，中文列优先。
+            def _norm(s: str) -> str:
+                return "".join(
+                    ch for ch in s
+                    if ch not in " ，,。.、：:；;！!？?（）()【】[]\"'"
+                )
+
             news_list = []
-            for _, row in df.head(limit).iterrows():
+            seen = set()
+            for _, row in df.iterrows():
+                title = str(row.get("新闻标题", row.get("title", row.get("标题", "")))).strip()
+                if not title:
+                    continue
+                content = str(row.get("新闻内容", row.get("content", ""))).strip()
+                # 东财同一事件常推多条快讯，标题只差标点，正文则完全相同。
+                # 优先用正文指纹去重（标题指纹抓不住"1000元" vs "1000元，"），
+                # 正文太短时才退回标题指纹。
+                ck = _norm(content)
+                key = ck[:40] if len(ck) >= 20 else _norm(title)[:20]
+                if key in seen:
+                    continue
+                seen.add(key)
                 news_list.append({
-                    "title": str(row.get("title", row.get("标题", ""))),
-                    "content": str(row.get("content", row.get("内容", "")))[:500],
-                    "source": str(row.get("source", row.get("来源", ""))),
-                    "datetime": str(row.get("datetime", row.get("发布时间", ""))),
-                    "url": str(row.get("url", row.get("链接", ""))),
+                    "title": title,
+                    "content": content[:500],
+                    "source": str(row.get("文章来源", row.get("source", ""))),
+                    "datetime": str(row.get("发布时间", row.get("datetime", ""))),
+                    "url": str(row.get("新闻链接", row.get("url", ""))),
                 })
+                if len(news_list) >= limit:
+                    break
 
             from config import settings
             self.cache.set(cache_key, news_list, ttl=settings.news_cache_ttl)

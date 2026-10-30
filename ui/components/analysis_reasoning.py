@@ -29,12 +29,14 @@ def render_analysis_details(
     """
     st.markdown("## 📋 详细分析")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 技术分析",
         "📰 新闻情绪",
         "📢 公告",
         "💰 基本面",
         "📝 完整报告",
+        "🏆 战绩",
+        "📖 新手科普",
     ])
 
     # ===== Tab 1: 技术分析 =====
@@ -100,7 +102,11 @@ def render_analysis_details(
                           delta=f"{change_pct:+.2f}%" if change_pct else None,
                           delta_color="inverse")
             cols[2].metric("成交量", f"{q.get('volume', 0):,.0f}")
-            cols[3].metric("换手率", f"{q.get('turnover', 'N/A')}%")
+            turnover = q.get("turnover")
+            cols[3].metric(
+                "换手率",
+                f"{turnover:.2f}%" if isinstance(turnover, (int, float)) else "N/A",
+            )
 
     # ===== Tab 5: 完整报告 =====
     with tab5:
@@ -108,6 +114,15 @@ def render_analysis_details(
             st.markdown(final_report)
         else:
             st.info("暂无完整报告")
+
+    # ===== Tab 6: 战绩 =====
+    with tab6:
+        _render_track_record()
+
+    # ===== Tab 7: 新手科普 =====
+    with tab7:
+        from ui.components.beginner_guide import render_beginner_guide
+        render_beginner_guide(financial_data=financial_data)
 
     # 免责声明
     st.markdown("""
@@ -159,4 +174,76 @@ def _render_announcements(
     st.info(
         "本次没有命中公告片段。可能是这只股票在该时间窗内没有公告，"
         "也可能是公告没命中固定的 6 个研究问题（减持/回购/业绩预告/合同/分红/风险）。"
+    )
+
+
+def _render_track_record() -> None:
+    """「🏆 战绩」tab：历史预测 vs 实际走势的自动复盘
+
+    数据来自 records/predictions.jsonl（run_agent 末尾自动存档）。
+    """
+    from utils.track_record import load_records, review_pending, summarize
+
+    if st.button("🔄 复盘到期预测（拉最新行情判定对错）"):
+        with st.spinner("正在复盘…"):
+            stats = review_pending()
+        st.toast(f"复盘完成：判定 {stats['reviewed']} 条，未到期/缺数据跳过 {stats['skipped']} 条"
+                 f"{'，失败 ' + str(stats['failed']) + ' 条' if stats['failed'] else ''}")
+
+    records = load_records()
+    if not records:
+        st.info(
+            "还没有存档的预测。每次分析完成后会自动存档；等预测期（1-5 个交易日）"
+            "走完后回到这里点「复盘」，就能看到当初的预测对不对。"
+        )
+        return
+
+    # 按股票筛选
+    stocks = sorted({r.get("stock_code", "") for r in records if r.get("stock_code")})
+    pick = st.selectbox("筛选", ["全部"] + stocks)
+    scope = records if pick == "全部" else [r for r in records if r.get("stock_code") == pick]
+
+    s = summarize(scope)
+    cols = st.columns(4)
+    cols[0].metric("存档预测", s["total"])
+    cols[1].metric("已复盘", s["reviewed"])
+    cols[2].metric(
+        "方向命中率",
+        f"{s['hit_rate'] * 100:.0f}%" if s["hit_rate"] is not None else "—",
+    )
+    cols[3].metric(
+        "平均置信度",
+        f"{s['avg_confidence'] * 100:.0f}%" if s["avg_confidence"] is not None else "—",
+    )
+
+    st.markdown("##### 明细")
+    rows = []
+    for r in sorted(scope, key=lambda x: x.get("prediction_date", ""), reverse=True)[:30]:
+        o = r.get("outcome") or {}
+        if "direction_hit" in o:
+            verdict = "✓ 命中" if o["direction_hit"] else "✗ 未命中"
+        elif o.get("error"):
+            verdict = "⚠️ " + o["error"]
+        else:
+            verdict = "⏳ 未到期"
+        rows.append({
+            "日期": r.get("prediction_date"),
+            "股票": r.get("stock_name") or r.get("stock_code"),
+            "预测": r.get("trend"),
+            "置信度": f"{r.get('confidence', 0) * 100:.0f}%",
+            "期内涨跌": f"{o['change_pct']:+.2f}%" if "change_pct" in o else "",
+            "判定": verdict,
+        })
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    st.markdown("##### 置信度校准")
+    st.dataframe(s["calibration"], use_container_width=True, hide_index=True)
+    st.caption(
+        "校准的含义：置信度 0.6~0.8 的预测，实际命中率应落在 60%~80%。"
+        "两列差得越远，说明模型的自信越不可信。"
+    )
+    st.caption(
+        "判定规则：看涨=期末涨超 +0.5%；看跌=跌超 -0.5%；震荡=期内涨跌幅在 ±3% 内。"
+        "涨跌幅 = 预测日之后第 N 个交易日的收盘价 vs 预测日收盘/预测时价格。"
+        "判定由代码完成，不经 LLM。"
     )

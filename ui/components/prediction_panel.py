@@ -1,15 +1,33 @@
 """
 预测结果面板组件 - 展示 AI 预测的核心结论
+
+配色一律走 ui/styles.py 的 token，不在组件里写死色值：
+深色页面上任何浅色内联背景都会变成刺眼的白块。
 """
 import streamlit as st
 from typing import Dict, Optional
 
+# 趋势 → (emoji, 样式类)。涨红跌绿沿用 A 股约定，且都配了 emoji 做第二编码
+_TREND = {
+    "看涨": ("📈", "up"),
+    "看跌": ("📉", "down"),
+    "震荡": ("📊", "warn"),
+}
 
+
+def _card(label: str, value: str, cls: str = "", size: str = "") -> str:
+    style = f' style="font-size:{size}"' if size else ""
+    return (
+        f'<div class="metric-card">'
+        f'<div class="metric-label">{label}</div>'
+        f'<div class="metric-value {cls}"{style}>{value}</div></div>'
+    )
 def render_prediction_panel(prediction: Optional[Dict]) -> None:
     """渲染预测结果卡片
 
     Args:
-        prediction: 预测结果 Dict {trend, confidence, period, key_factors, risk_warnings, price_targets, reasoning_summary}
+        prediction: 预测结果 Dict {trend, confidence, period, key_factors,
+                    risk_warnings, price_targets, reasoning_summary}
     """
     if not prediction:
         st.info("等待分析完成...")
@@ -21,45 +39,21 @@ def render_prediction_panel(prediction: Optional[Dict]) -> None:
     confidence = prediction.get("confidence", 0.5)
     period = prediction.get("period", "1-5个交易日")
 
-    # ===== 趋势判断 =====
-    trend_emoji = {"看涨": "📈", "看跌": "📉", "震荡": "📊"}
-    trend_color = {"看涨": "#e53e3e", "看跌": "#38a169", "震荡": "#d69e2e"}
-    bg_color = {"看涨": "#fff5f5", "看跌": "#f0fff4", "震荡": "#fffff0"}
-    border_color = {"看涨": "#fc8181", "看跌": "#68d391", "震荡": "#f6e05e"}
+    emoji, trend_cls = _TREND.get(trend, ("📊", "warn"))
 
-    emoji = trend_emoji.get(trend, "📊")
-    t_color = trend_color.get(trend, "#d69e2e")
-    bg = bg_color.get(trend, "#fffff0")
-    border = border_color.get(trend, "#f6e05e")
-
-    # 三列指标卡片
     col1, col2, col3 = st.columns(3)
-
     with col1:
-        st.markdown(f"""
-        <div class="metric-card" style="background:{bg}; border:1px solid {border}">
-            <div class="metric-label">短期趋势</div>
-            <div class="metric-value" style="color:{t_color}">{emoji} {trend}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
+        st.markdown(_card("短期趋势", f"{emoji} {trend}", trend_cls),
+                    unsafe_allow_html=True)
     with col2:
         conf_pct = confidence * 100
-        conf_color = "#e53e3e" if conf_pct >= 70 else ("#d69e2e" if conf_pct >= 40 else "#718096")
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">置信度</div>
-            <div class="metric-value" style="color:{conf_color}">{conf_pct:.0f}%</div>
-        </div>
-        """, unsafe_allow_html=True)
-
+        # 置信度是"模型有多确定"，不是涨跌方向，所以不用红绿
+        conf_cls = "warn" if conf_pct >= 70 else ""
+        st.markdown(_card("置信度", f"{conf_pct:.0f}%", conf_cls),
+                    unsafe_allow_html=True)
     with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-label">预测周期</div>
-            <div class="metric-value" style="font-size:1.2rem; color:#4a5568">{period}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_card("预测周期", period, "", "1.05rem"),
+                    unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -67,54 +61,50 @@ def render_prediction_panel(prediction: Optional[Dict]) -> None:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.markdown("### 🔑 关键因素")
+        st.markdown("### 关键因素")
         for factor in prediction.get("key_factors", []):
-            st.markdown(f"- ✅ {factor}")
+            # 这里不能加 ✅：关键因素里一半是偏空的（"财务数据缺失"、"个股逆势
+            # 下跌"），给每条都挂个绿勾等于把利空标成了利好
+            st.markdown(f"- {factor}")
         if not prediction.get("key_factors"):
             st.caption("暂无")
 
     with col_right:
-        st.markdown("### ⚠️ 风险提示")
+        st.markdown("### 风险提示")
         for warning in prediction.get("risk_warnings", []):
             st.markdown(f"- ⚠️ {warning}")
         if not prediction.get("risk_warnings"):
             st.caption("暂无")
 
-    # 价格目标
-    price_targets = prediction.get("price_targets", {})
-    if price_targets:
+    # 价格目标：支撑位 → 现价 → 压力位，一张横向区间条
+    price_targets = prediction.get("price_targets") or {}
+    support = price_targets.get("support") or 0
+    current = price_targets.get("current") or 0
+    resistance = price_targets.get("resistance") or 0
+    target = price_targets.get("target_high") or price_targets.get("target") or 0
+
+    if support and resistance and current and resistance > support:
         st.markdown("---")
-        st.markdown("### 💰 目标价位")
+        st.markdown("### 目标价位")
 
-        support = price_targets.get("support", 0)
-        current = price_targets.get("current", 0)
-        resistance = price_targets.get("resistance", 0)
-        target = price_targets.get("target_high", 0) or price_targets.get("target", 0)
+        pct = min(max((current - support) / (resistance - support), 0.0), 1.0) * 100
+        st.markdown(
+            f'<div class="range-bar">'
+            f'<span class="range-mark" style="left:{pct:.1f}%">现价 ¥{current:,.2f}</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-        if support and resistance and current:
-            # 计算比例用于可视化
-            total_range = resistance - support
-            if total_range > 0:
-                current_pct = (current - support) / total_range * 100
-
-                st.markdown(f"""
-                <div style="position:relative; height:40px; background:linear-gradient(to right, #38a169, #e2e8f0, #e53e3e);
-                            border-radius:20px; margin:1rem 0;">
-                    <div style="position:absolute; left:{current_pct}%; top:-5px;
-                                transform:translateX(-50%); font-size:1.2rem;">▼</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-                cols = st.columns(4)
-                cols[0].metric("🛡️ 支撑位", f"¥{support:.2f}")
-                cols[1].metric("📍 当前价", f"¥{current:.2f}")
-                cols[2].metric("🧱 压力位", f"¥{resistance:.2f}")
-                if target:
-                    cols[3].metric("🎯 目标价", f"¥{target:.2f}")
+        cols = st.columns(4)
+        cols[0].metric("🛡️ 支撑位", f"¥{support:,.2f}")
+        cols[1].metric("📍 当前价", f"¥{current:,.2f}")
+        cols[2].metric("🧱 压力位", f"¥{resistance:,.2f}")
+        if target:
+            cols[3].metric("🎯 目标价", f"¥{target:,.2f}")
 
     # 综合分析摘要
     summary = prediction.get("reasoning_summary", "")
     if summary:
         st.markdown("---")
-        st.markdown("### 📝 分析摘要")
+        st.markdown("### 分析摘要")
         st.info(summary)

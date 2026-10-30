@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自选股简报 · 界面视觉稿</title>
+<style>
+:root{
+  color-scheme: dark;
+  --page:#0a0c10;
+  --surface-1:#11151c;
+  --surface-2:#161b24;
+  --surface-3:#1c2330;
+  --line:#232a36;
+  --grid:#1b212b;
+  --ink-1:#e8edf5;
+  --ink-2:#a7b1c2;
+  --ink-3:#8a94a6;
+  --up:#e66767;
+  --down:#199e70;
+  --accent:#e0a33a;
+  --focus:#3987e5;
+  --radius:10px;
+  --font:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--page);color:var(--ink-1);
+  font-family:var(--font);font-size:14px;line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+a{color:var(--focus);text-decoration:none}
+.app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+
+/* ===== 侧边栏 ===== */
+.sidebar{
+  background:var(--surface-1);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:18px 14px;gap:22px;
+  position:sticky;top:0;height:100vh;
+}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.brand-mark{
+  width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(160deg,#222a38,#151a23);
+  border:1px solid var(--line);color:var(--accent);font-weight:700;font-size:15px;
+}
+.brand-name{font-weight:600;letter-spacing:.02em}
+.brand-sub{font-size:11px;color:var(--ink-3);letter-spacing:.08em;text-transform:uppercase}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav-label{font-size:11px;color:var(--ink-3);letter-spacing:.1em;padding:0 10px 6px}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
+  color:var(--ink-2);border:1px solid transparent;width:100%;text-align:left;
+}
+.nav-item:hover{background:var(--surface-2);color:var(--ink-1)}
+.nav-item.active{
+  background:var(--surface-3);color:var(--ink-1);border-color:var(--line);
+}
+.nav-item .dot{width:6px;height:6px;border-radius:50%;background:var(--ink-3)}
+.nav-item.active .dot{background:var(--accent)}
+.nav-item .count{margin-left:auto;font:11px/1 var(--mono);color:var(--ink-3)}
+.sidebar-foot{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.plan-box{
+  border:1px solid var(--line);background:var(--surface-2);border-radius:var(--radius);
+  padding:12px;
+}
+.plan-row{display:flex;justify-content:space-between;align-items:baseline;font-size:12px}
+.plan-name{color:var(--accent);font-weight:600}
+.plan-usage{color:var(--ink-3);font-family:var(--mono);font-size:11px}
+.plan-bar{height:4px;border-radius:2px;background:var(--surface-3);margin:9px 0 10px;overflow:hidden}
+.plan-bar > i{display:block;height:100%;background:var(--accent);border-radius:2px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  border-radius:8px;padding:8px 14px;font-size:13px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink-1);transition:.15s;
+}
+.btn:hover{background:var(--surface-3)}
+.btn-primary{
+  background:var(--accent);border-color:var(--accent);color:#151006;font-weight:600;
+}
+.btn-primary:hover{filter:brightness(1.08);background:var(--accent)}
+.btn-ghost{background:transparent}
+.btn-block{width:100%}
+.kbd{font:11px/1 var(--mono);color:var(--ink-3);border:1px solid var(--line);
+  border-radius:4px;padding:2px 5px}
+
+/* ===== 主区与顶栏 ===== */
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{
+  display:flex;align-items:flex-end;gap:16px;
+  padding:22px 28px 16px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#0e1219,var(--page));
+}
+.topbar h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.01em}
+.topbar .sub{margin:5px 0 0;font-size:12.5px;color:var(--ink-3)}
+.topbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
+  border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--ink-2);
+  background:var(--surface-1);
+}
+.pill .live{width:6px;height:6px;border-radius:50%;background:var(--down)}
+.content{padding:20px 28px 40px;display:flex;flex-direction:column;gap:18px}
+
+/* ===== 行情条 ===== */
+.quote-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.quote{
+  background:var(--surface-1);border:1px solid var(--line);border-radius:var(--radius);
+  padding:13px 15px;display:flex;flex-direction:column;gap:4px;
+}
+.quote-top{display:flex;align-items:baseline;gap:8px}
+.quote-name{font-weight:600;font-size:13.5px}
+.quote-code{font:11px/1 var(--mono);color:var(--ink-3)}
+.quote-badge{margin-left:auto;font-size:10.5px;color:var(--ink-3);
+  border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.quote-price-row{display:flex;align-items:baseline;gap:10px}
+.quote-price{font-size:23px;font-weight:600;letter-spacing:-.01em;line-height:1.2}
+.delta{font-size:12.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.delta.up{color:var(--up)}
+.delta.down{color:var(--down)}
+.delta.flat{color:var(--ink-2)}
+.quote-meta{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.spark{margin-top:2px;height:34px;width:100%;display:block}
+.spark path{fill:none;stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.spark .area{stroke:none;opacity:.10}
+
+/* ===== 两栏 ===== */
+.split{display:grid;grid-template-columns:minmax(0,1fr) 306px;gap:18px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ===== 卡片 ===== */
+.card{
+  background:var(--surface-1);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;
+}
+.card-head{
+  display:flex;align-items:center;gap:10px;padding:13px 16px;
+  border-bottom:1px solid var(--line);background:var(--surface-2);
+}
+.card-head h2{margin:0;font-size:13.5px;font-weight:600;letter-spacing:.01em}
+.card-head .hint{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
+.card-body{padding:16px}
+.section-label{
+  display:flex;align-items:center;gap:7px;
+  font-size:11px;letter-spacing:.12em;color:var(--ink-3);
+  text-transform:uppercase;margin:0 0 7px;
+}
+.section-label::after{content:"";flex:1;height:1px;background:var(--line)}
+.prose{margin:0 0 16px;font-size:13.5px;color:var(--ink-2);line-height:1.75}
+.prose:last-child{margin-bottom:0}
+.prose strong{color:var(--ink-1);font-weight:600}
+.lead{font-size:14.5px;color:var(--ink-1);line-height:1.7}
+.tag{
+  display:inline-block;font-size:11px;color:var(--ink-2);background:var(--surface-3);
+  border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin-right:6px;
+}
+.tag.warn{color:var(--accent);border-color:rgba(224,163,58,.35);background:rgba(224,163,58,.08)}
+
+/* ===== 事件时间线 ===== */
+.timeline{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl-item{display:grid;grid-template-columns:9px 1fr;gap:11px;padding:0 0 15px;position:relative}
+.tl-item:last-child{padding-bottom:0}
+.tl-item::before{
+  content:"";position:absolute;left:4px;top:12px;bottom:0;width:1px;background:var(--line);
+}
+.tl-item:last-child::before{display:none}
+.tl-dot{width:9px;height:9px;border-radius:50%;background:var(--surface-3);
+  border:1px solid var(--line);margin-top:5px;z-index:1}
+.tl-dot.hot{background:var(--accent);border-color:var(--accent)}
+.tl-date{font:11px/1 var(--mono);color:var(--ink-3);letter-spacing:.02em}
+.tl-title{font-size:12.8px;color:var(--ink-1);margin-top:3px;line-height:1.5}
+.tl-src{font-size:11px;color:var(--ink-3);margin-top:2px}
+
+/* ===== 表格 ===== */
+.table{width:100%;border-collapse:collapse;font-size:12.5px}
+.table th{
+  text-align:left;font-weight:500;color:var(--ink-3);font-size:11px;
+  letter-spacing:.06em;padding:8px 10px;border-bottom:1px solid var(--line);
+}
+.table td{padding:8px 10px;border-bottom:1px solid var(--grid);color:var(--ink-2)}
+.table tr:last-child td{border-bottom:none}
+.table .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+
+/* ===== 其余自选股（紧凑列表） ===== */
+.brief-list{display:flex;flex-direction:column}
+.brief-row{
+  display:grid;grid-template-columns:1fr auto;gap:6px 16px;
+  padding:13px 16px;border-bottom:1px solid var(--grid);
+  text-align:left;width:100%;transition:background .12s;
+}
+.brief-row:last-child{border-bottom:none}
+.brief-row:hover{background:var(--surface-2)}
+.brief-row:hover .brief-arrow{color:var(--ink-1);transform:translateX(2px)}
+.brief-top{display:flex;align-items:baseline;gap:8px}
+.brief-name{font-size:13px;font-weight:600;color:var(--ink-1)}
+.brief-code{font:11px/1 var(--mono);color:var(--ink-3)}
+.brief-summary{grid-column:1;font-size:12.5px;color:var(--ink-2);line-height:1.6;
+  margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden}
+.brief-side{grid-row:1 / span 2;grid-column:2;display:flex;align-items:center;gap:10px}
+.brief-arrow{color:var(--ink-3);font-size:13px;transition:transform .12s,color .12s}
+
+/* ===== 分析页：KPI ===== */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi{
+  background:var(--surface-1);border:1px solid var(--line);border-radius:var(--radius);
+  padding:13px 15px;
+}
+.kpi-label{font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+.kpi-value{font-size:21px;font-weight:600;margin-top:5px;letter-spacing:-.01em}
+.kpi-note{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.kpi-note.good{color:var(--down)}
+.kpi-note.bad{color:var(--up)}
+
+/* ===== 图表 ===== */
+.chart-toolbar{display:flex;align-items:center;gap:8px;padding:10px 16px;
+  border-bottom:1px solid var(--line);background:var(--surface-2)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{padding:5px 11px;font-size:12px;color:var(--ink-3);background:var(--surface-1)}
+.seg button:hover{color:var(--ink-1)}
+.seg button[aria-pressed="true"]{background:var(--surface-3);color:var(--ink-1)}
+.chart-toolbar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.legend{display:flex;align-items:center;gap:14px;font-size:11.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:14px;height:2px;border-radius:1px;
+  vertical-align:middle;margin-right:6px}
+.legend .up{background:var(--up)}
+.legend .down{background:var(--down)}
+.legend .ma5{background:#c3c2b7}
+.legend .ma20{background:#9085e9}
+.chart-wrap{position:relative;padding:12px 8px 4px}
+#price-chart{width:100%;height:auto;display:block;overflow:visible}
+.grid-line{stroke:var(--grid);stroke-width:1;shape-rendering:crispEdges}
+.axis-text{fill:var(--ink-3);font-size:10.5px;font-family:var(--mono)}
+.crosshair{stroke:var(--ink-3);stroke-width:1;stroke-dasharray:3 3;opacity:0}
+.tip{
+  position:absolute;pointer-events:none;z-index:5;min-width:150px;
+  background:#0b0e13;border:1px solid #2c3544;border-radius:8px;padding:9px 11px;
+  font-size:11.5px;color:var(--ink-2);box-shadow:0 8px 24px rgba(0,0,0,.5);
+  opacity:0;transform:translateY(3px);transition:opacity .12s,transform .12s;
+}
+.tip.show{opacity:1;transform:translateY(0)}
+.tip .t-date{font-family:var(--mono);color:var(--ink-1);font-size:11px;margin-bottom:6px}
+.tip .t-row{display:flex;justify-content:space-between;gap:16px;line-height:1.7}
+.tip .t-row b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink-1)}
+.tip .t-up{color:var(--up)}
+.tip .t-down{color:var(--down)}
+.chart-foot{display:flex;gap:16px;padding:2px 18px 14px;font-size:11.5px;color:var(--ink-3)}
+.chart-foot span b{color:var(--ink-2);font-weight:500;font-variant-numeric:tabular-nums}
+.table-view{display:none;padding:4px 16px 16px}
+.table-view.open{display:block}
+.is-hidden{display:none !important}
+
+/* ===== 免责 ===== */
+.disclaimer{
+  font-size:11.5px;color:var(--ink-3);line-height:1.65;
+  border-top:1px solid var(--line);padding-top:12px;
+}
+.disclaimer b{color:var(--ink-2);font-weight:500}
+
+/* ===== 付费墙 ===== */
+.modal-backdrop{
+  position:fixed;inset:0;background:rgba(4,6,9,.72);backdrop-filter:blur(3px);
+  display:none;align-items:center;justify-content:center;z-index:50;padding:24px;
+}
+.modal-backdrop.open{display:flex}
+.modal{
+  width:min(760px,100%);background:var(--surface-1);border:1px solid #2c3544;
+  border-radius:14px;box-shadow:0 30px 80px rgba(0,0,0,.65);overflow:hidden;
+}
+.modal-head{padding:22px 26px 18px;border-bottom:1px solid var(--line);position:relative}
+.modal-head h3{margin:0;font-size:18px;font-weight:600}
+.modal-head p{margin:7px 0 0;font-size:12.5px;color:var(--ink-3)}
+.modal-close{position:absolute;top:18px;right:18px;color:var(--ink-3);font-size:18px;
+  line-height:1;padding:4px 8px;border-radius:6px}
+.modal-close:hover{background:var(--surface-3);color:var(--ink-1)}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:20px 26px}
+.plan{
+  border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--surface-2);
+  display:flex;flex-direction:column;gap:10px;
+}
+.plan.featured{border-color:rgba(224,163,58,.55);background:
+  linear-gradient(180deg,rgba(224,163,58,.07),rgba(224,163,58,.01))}
+.plan h4{margin:0;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+.plan .price{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.plan .price small{font-size:12px;font-weight:400;color:var(--ink-3);margin-left:4px}
+.plan ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.plan li{font-size:12.5px;color:var(--ink-2);display:flex;gap:8px;align-items:flex-start}
+.plan li .ok{color:var(--down);font-weight:700;line-height:1.5}
+.plan li .no{color:var(--ink-3);line-height:1.5}
+.plan .btn{margin-top:auto}
+.modal-foot{padding:0 26px 22px;font-size:11.5px;color:var(--ink-3);line-height:1.6}
+.modal-foot b{color:var(--accent);font-weight:500}
+
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,8px);
+  background:#0b0e13;border:1px solid #2c3544;border-radius:8px;
+  padding:9px 16px;font-size:12.5px;color:var(--ink-1);
+  box-shadow:0 10px 30px rgba(0,0,0,.55);opacity:0;pointer-events:none;
+  transition:opacity .18s,transform .18s;z-index:60;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ===== 响应式 ===== */
+@media (max-width:1180px){
+  .split{grid-template-columns:1fr}
+  .quote-strip{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}
+  .sidebar{
+    position:sticky;top:0;z-index:20;height:auto;
+    flex-direction:row;align-items:center;gap:10px;
+    padding:10px 14px;border-right:none;border-bottom:1px solid var(--line);
+    overflow-x:auto;
+  }
+  .brand{flex:0 0 auto;padding:0}
+  .brand-sub{display:none}
+  .brand-name{white-space:nowrap;font-size:13px}
+  .nav{flex-direction:row;flex:1 1 auto;min-width:0;overflow-x:auto;gap:4px}
+  .nav-label{display:none}
+  .nav-item{flex:0 0 auto;width:auto;white-space:nowrap;padding:7px 10px}
+  .nav-item .count{display:none}
+  .sidebar-foot{flex:0 0 auto;margin:0;flex-direction:row;align-items:center}
+  .plan-box{display:flex;align-items:center;padding:0;border:none;background:none}
+  .plan-row,.plan-bar{display:none}
+  .sidebar .btn-primary{padding:7px 12px;font-size:12px;white-space:nowrap}
+  .sidebar-foot > div:last-child{display:none}
+  .topbar{flex-wrap:wrap;gap:12px;padding-left:16px;padding-right:16px}
+  .topbar-actions{margin-left:0;width:100%;flex-wrap:wrap}
+  .content{padding-left:16px;padding-right:16px}
+  .quote-strip{grid-template-columns:1fr}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .plans{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 侧边栏 ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <div>
+        <div class="brand-name">A股观察台</div>
+        <div class="brand-sub">Stock Terminal</div>
+      </div>
+    </div>
+
+    <nav class="nav" aria-label="主导航">
+      <div class="nav-label">工作台</div>
+      <button class="nav-item active" data-screen="briefing">
+        <span class="dot"></span>自选股简报<span class="count">3</span>
+      </button>
+      <button class="nav-item" data-screen="analysis">
+        <span class="dot"></span>个股深度分析
+      </button>
+      <button class="nav-item" data-stub>
+        <span class="dot"></span>预测战绩<span class="count">0</span>
+      </button>
+      <div class="nav-label" style="margin-top:14px">工具</div>
+      <button class="nav-item" data-stub>
+        <span class="dot"></span>新手科普
+      </button>
+      <button class="nav-item" data-stub>
+        <span class="dot"></span>公告全文检索
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="plan-box">
+        <div class="plan-row">
+          <span class="plan-name">免费版</span>
+          <span class="plan-usage">1 / 3 只</span>
+        </div>
+        <div class="plan-bar"><i style="width:33%"></i></div>
+        <button class="btn btn-primary btn-block" data-open-paywall>升级 Pro · ¥29/月</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);padding:0 2px">
+        <span>deepseek-v4-flash</span><span class="kbd">⌘K</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">自选股简报</h1>
+        <p class="sub" id="page-sub">2026-10-28 周三 · 3 只自选股 · 巨潮资讯 / 东方财富</p>
+      </div>
+      <div class="topbar-actions">
+        <span class="pill"><span class="live"></span>今日已生成</span>
+        <button class="btn btn-ghost" id="refresh-btn">重新生成</button>
+        <button class="btn" data-open-paywall>添加自选股</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ---------- 屏幕 1：自选股简报 ---------- -->
+      <section id="screen-briefing" class="screen">
+
+        <!-- 行情条 -->
+        <div class="quote-strip">
+          <article class="quote">
+            <div class="quote-top">
+              <span class="quote-name">贵州茅台</span>
+              <span class="quote-code">600519</span>
+              <span class="quote-badge">沪</span>
+            </div>
+            <div class="quote-price-row">
+              <span class="quote-price">1355.90</span>
+              <span class="delta up">▲ +0.44%</span>
+            </div>
+            <div class="quote-meta">量比 0.9 · 近 5 日 +1.80%</div>
+            <svg class="spark" viewBox="0 0 240 30" preserveAspectRatio="none" aria-hidden="true">
+              <path class="area" fill="#e66767" d="M0,21 L20,19 L40,22 L60,17 L80,18 L100,14 L120,15 L140,11 L160,12 L180,8 L200,10 L220,6 L240,7 L240,30 L0,30 Z"/>
+              <path stroke="#e66767" vector-effect="non-scaling-stroke" d="M0,21 L20,19 L40,22 L60,17 L80,18 L100,14 L120,15 L140,11 L160,12 L180,8 L200,10 L220,6 L240,7"/>
+            </svg>
+          </article>
+
+          <article class="quote">
+            <div class="quote-top">
+              <span class="quote-name">平安银行</span>
+              <span class="quote-code">000001</span>
+              <span class="quote-badge">深</span>
+            </div>
+            <div class="quote-price-row">
+              <span class="quote-price">11.86</span>
+              <span class="delta down">▼ −0.92%</span>
+            </div>
+            <div class="quote-meta">量比 1.1 · 近 5 日 −2.14%</div>
+            <svg class="spark" viewBox="0 0 240 30" preserveAspectRatio="none" aria-hidden="true">
+              <path class="area" fill="#199e70" d="M0,8 L20,10 L40,9 L60,13 L80,12 L100,15 L120,14 L140,18 L160,17 L180,20 L200,19 L220,23 L240,22 L240,30 L0,30 Z"/>
+              <path stroke="#199e70" vector-effect="non-scaling-stroke" d="M0,8 L20,10 L40,9 L60,13 L80,12 L100,15 L120,14 L140,18 L160,17 L180,20 L200,19 L220,23 L240,22"/>
+            </svg>
+          </article>
+
+          <article class="quote">
+            <div class="quote-top">
+              <span class="quote-name">宁德时代</span>
+              <span class="quote-code">300750</span>
+              <span class="quote-badge">创</span>
+            </div>
+            <div class="quote-price-row">
+              <span class="quote-price">268.40</span>
+              <span class="delta up">▲ +2.13%</span>
+            </div>
+            <div class="quote-meta">量比 1.6 · 近 5 日 +4.62%</div>
+            <svg class="spark" viewBox="0 0 240 30" preserveAspectRatio="none" aria-hidden="true">
+              <path class="area" fill="#e66767" d="M0,24 L20,23 L40,25 L60,20 L80,21 L100,16 L120,18 L140,13 L160,14 L180,10 L200,11 L220,7 L240,5 L240,30 L0,30 Z"/>
+              <path stroke="#e66767" vector-effect="non-scaling-stroke" d="M0,24 L20,23 L40,25 L60,20 L80,21 L100,16 L120,18 L140,13 L160,14 L180,10 L200,11 L220,7 L240,5"/>
+            </svg>
+          </article>
+        </div>
+
+        <div class="split">
+          <!-- 左：简报正文 -->
+          <div class="stack">
+            <article class="card">
+              <div class="card-head">
+                <h2>贵州茅台 · 今日简报</h2>
+                <span class="hint">生成于 09:32 · 已缓存</span>
+              </div>
+              <div class="card-body">
+                <p class="section-label">一句话</p>
+                <p class="lead">今日收涨 <strong>0.44%</strong>，近 5 个交易日累计 <strong>+1.80%</strong>；公司层面近 90 天无新增临时公告，属于信息相对平静的一天。</p>
+
+                <p class="section-label" style="margin-top:20px">发生了什么</p>
+                <p class="prose"><strong>价格与成交。</strong>收于 1355.90 元，涨幅 0.44%，跑赢白酒板块整体。成交量约为最近 5 日均量的 0.9 倍，没有放量，说明今天的上涨主要是存量资金的小幅推动，而不是资金集中进场。</p>
+                <p class="prose"><strong>公告。</strong>近 90 天最新一份是 2026-08-15 披露的《2026 年半年度报告》，同日还有一份《业绩说明会召开情况的公告》。两份都属于常规披露，没有涉及分红、回购、增减持等可能直接影响股价的事项。</p>
+                <p class="prose"><strong>新闻。</strong>媒体讨论集中在白酒行业动销与中秋备货节奏，属于行业层面话题，未出现针对公司的实质性新事件。</p>
+
+                <p class="section-label" style="margin-top:20px">值得留意</p>
+                <p class="prose">中报之后进入<strong>信息空窗期</strong>，下一份定期披露通常是三季报（10 月下旬）。这段时间股价更容易受行业数据和市场情绪影响，而不是公司自身消息。</p>
+                <p class="prose">判断白酒公司经营情况，<strong>批价和渠道库存</strong>比单日涨跌更有信息量；单日 ±1% 以内的波动，在历史上属于常态区间。</p>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head">
+                <h2>其余 2 只自选股</h2>
+                <span class="hint">今日简报已生成，点击展开</span>
+              </div>
+              <div class="brief-list">
+                <button class="brief-row" data-stub>
+                  <div class="brief-top">
+                    <span class="brief-name">平安银行</span>
+                    <span class="brief-code">000001</span>
+                  </div>
+                  <div class="brief-side">
+                    <span class="delta down">▼ −0.92%</span>
+                    <span class="brief-arrow">→</span>
+                  </div>
+                  <p class="brief-summary">今日下跌 0.92%，近 5 日累计 −2.14%。近 90 天无新增公告；新闻讨论集中在银行业净息差与信贷投放节奏，没有公司层面的新事件。</p>
+                </button>
+                <button class="brief-row" data-stub>
+                  <div class="brief-top">
+                    <span class="brief-name">宁德时代</span>
+                    <span class="brief-code">300750</span>
+                  </div>
+                  <div class="brief-side">
+                    <span class="delta up">▲ +2.13%</span>
+                    <span class="brief-arrow">→</span>
+                  </div>
+                  <p class="brief-summary">今日上涨 2.13%，成交量为 5 日均量的 1.6 倍，属于放量。行业新闻涉及储能订单与海外产能布局，公司未发布临时公告。</p>
+                </button>
+              </div>
+            </article>
+
+            <p class="disclaimer">
+              <b>关于本简报：</b>内容由程序聚合公开信息后由模型改写，只描述「发生了什么」，不构成投资建议，也不预测涨跌。
+              数据来源：巨潮资讯网（公告）、东方财富（行情与新闻）。生成时间 2026-10-28 09:32。
+            </p>
+          </div>
+
+          <!-- 右：事件与素材 -->
+          <div class="stack">
+            <article class="card">
+              <div class="card-head"><h2>近期事件</h2><span class="hint">90 天</span></div>
+              <div class="card-body">
+                <ul class="timeline">
+                  <li class="tl-item">
+                    <span class="tl-dot"></span>
+                    <div>
+                      <div class="tl-date">2026-08-15</div>
+                      <div class="tl-title">2026 年半年度报告</div>
+                      <div class="tl-src">巨潮资讯 · 定期报告</div>
+                    </div>
+                  </li>
+                  <li class="tl-item">
+                    <span class="tl-dot"></span>
+                    <div>
+                      <div class="tl-date">2026-08-15</div>
+                      <div class="tl-title">关于召开业绩说明会情况的公告</div>
+                      <div class="tl-src">巨潮资讯 · 临时公告</div>
+                    </div>
+                  </li>
+                  <li class="tl-item">
+                    <span class="tl-dot hot"></span>
+                    <div>
+                      <div class="tl-date">2026-09-26</div>
+                      <div class="tl-title">中秋备货节奏成为行业关注点</div>
+                      <div class="tl-src">东方财富 · 新闻</div>
+                    </div>
+                  </li>
+                  <li class="tl-item">
+                    <span class="tl-dot hot"></span>
+                    <div>
+                      <div class="tl-date">2026-10-24</div>
+                      <div class="tl-title">白酒板块批价小幅回升</div>
+                      <div class="tl-src">东方财富 · 新闻</div>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="card-head"><h2>本期素材</h2></div>
+              <div class="card-body" style="padding:8px 6px">
+                <table class="table">
+                  <tbody>
+                    <tr><td>公告</td><td class="num">2 条</td></tr>
+                    <tr><td>新闻</td><td class="num">6 条</td></tr>
+                    <tr><td>全文检索命中</td><td class="num">8 段</td></tr>
+                    <tr><td>数据获取失败</td><td class="num">0 项</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- 屏幕 2：个股深度分析 ---------- -->
+      <section id="screen-analysis" class="screen" hidden>
+        <div class="kpi-row">
+          <div class="kpi">
+            <div class="kpi-label">RSI（6 日）</div>
+            <div class="kpi-value">58.2</div>
+            <div class="kpi-note">中性区间（30–70）</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">MACD</div>
+            <div class="kpi-value">+0.86</div>
+            <div class="kpi-note good">▲ 零轴上方</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">距 20 日均线</div>
+            <div class="kpi-value">+1.76%</div>
+            <div class="kpi-note">MA20 = 1332.42</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">量比</div>
+            <div class="kpi-value">0.90</div>
+            <div class="kpi-note">低于 5 日均量</div>
+          </div>
+        </div>
+
+        <article class="card">
+          <div class="chart-toolbar">
+            <div class="seg" role="group" aria-label="K 线周期">
+              <button aria-pressed="true">日 K</button>
+              <button aria-pressed="false">周 K</button>
+              <button aria-pressed="false">月 K</button>
+            </div>
+            <div class="right">
+              <div class="legend" aria-label="图例">
+                <span><i class="up"></i>收涨</span>
+                <span><i class="down"></i>收跌</span>
+                <span><i class="ma5"></i>MA5</span>
+                <span><i class="ma20"></i>MA20</span>
+              </div>
+              <button class="btn btn-ghost" id="table-toggle" aria-pressed="false"
+                      style="padding:4px 10px;font-size:12px">表格视图</button>
+            </div>
+          </div>
+
+          <div class="chart-wrap" id="chart-wrap">
+            <svg id="price-chart" viewBox="0 0 880 372" role="img"
+                 aria-label="贵州茅台最近 44 个交易日 K 线与成交量，支持鼠标悬停查看每日开高低收">
+              <g id="axis-layer"></g>
+              <g id="vol-layer"></g>
+              <g id="candle-layer"></g>
+              <g id="ma-layer"></g>
+              <g id="crosshair-layer"></g>
+            </svg>
+            <div class="tip" id="tip" role="status" aria-live="polite"></div>
+          </div>
+
+          <div class="chart-foot">
+            <span>区间涨跌 <b>+2.87%</b></span>
+            <span>区间最高 <b>1368.20</b></span>
+            <span>区间最低 <b>1312.50</b></span>
+            <span>振幅 <b>4.24%</b></span>
+          </div>
+
+          <div class="table-view" id="table-view">
+            <table class="table">
+              <thead>
+                <tr><th>日期</th><th class="num">开盘</th><th class="num">最高</th>
+                    <th class="num">最低</th><th class="num">收盘</th><th class="num">涨跌</th>
+                    <th class="num">成交量</th></tr>
+              </thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
+        </article>
+
+        <p class="disclaimer">
+          <b>关于指标：</b>RSI、MACD、均线都是对历史价格的数学描述，不构成对未来涨跌的预测。
+          本项目对 8 类技术信号做过回测，均未发现稳定的预测优势，因此这里只把它们当作「当前状态」的说明，不作为买卖依据。
+        </p>
+      </section>
+</div><!-- /.content -->
+  </main>
+</div><!-- /.app -->
+
+<!-- ============ 付费墙 ============ -->
+<div class="modal-backdrop" id="paywall" role="dialog" aria-modal="true" aria-labelledby="paywall-title">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="paywall-title">自选股已满 3 只</h3>
+      <p>免费版最多跟踪 3 只股票。升级后可跟踪 20 只，并解锁历史简报回看。</p>
+      <button class="modal-close" data-close-paywall aria-label="关闭">✕</button>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <h4>免费版</h4>
+        <div class="price">¥0<small>/月</small></div>
+        <ul>
+          <li><span class="ok">✓</span>最多 3 只自选股</li>
+          <li><span class="ok">✓</span>每日简报（当日缓存）</li>
+          <li><span class="ok">✓</span>个股深度分析</li>
+          <li><span class="no">—</span><span style="color:var(--ink-3)">不含历史简报回看</span></li>
+        </ul>
+        <button class="btn btn-block" disabled style="opacity:.5">当前套餐</button>
+      </div>
+      <div class="plan featured">
+        <h4>Pro <span class="tag warn">推荐</span></h4>
+        <div class="price">¥29<small>/月</small></div>
+        <ul>
+          <li><span class="ok">✓</span>最多 20 只自选股</li>
+          <li><span class="ok">✓</span>每日简报（当日缓存）</li>
+          <li><span class="ok">✓</span>个股深度分析</li>
+          <li><span class="ok">✓</span>历史简报回看（近 90 天）</li>
+        </ul>
+        <button class="btn btn-primary btn-block" id="pay-btn">模拟支付 ¥29 / 月</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      这是演示环境：<b>不会真实扣款</b>，点击后仅在本地写入一条套餐记录，用于展示完整的付费流程。
+      本产品提供信息整理与解读，<b>不提供任何买卖建议</b>。
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var BOX = { x0: 10, x1: 800, y0: 16, y1: 246, v0: 272, v1: 320, axisY: 342 };
+
+  /* ---------- 确定性伪随机（固定种子，保证每次渲染一致） ---------- */
+  function lcg(seed) {
+    var s = seed >>> 0;
+    return function () {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+  }
+
+  /* ---------- 交易日（跳过周末） ---------- */
+  function tradingDays(n) {
+    var out = [], d = new Date(Date.UTC(2026, 9, 28));
+    while (out.length < n) {
+      var wd = d.getUTCDay();
+      if (wd !== 0 && wd !== 6) out.unshift(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() - 1);
+    }
+    return out;
+  }
+
+  var N = 44;
+  var DATES = tradingDays(N);
+  var rnd = lcg(20261028);
+  var prev = 1320, candles = [];
+
+  for (var i = 0; i < N; i++) {
+    var open = prev * (1 + (rnd() - 0.5) * 0.008);
+    var close = open * (1 + (rnd() - 0.5) * 0.024 + 0.0013);
+    candles.push({
+      open: open,
+      close: close,
+      hi: Math.max(open, close) * (1 + rnd() * 0.006),
+      lo: Math.min(open, close) * (1 - rnd() * 0.006),
+      vol: 2.3 + rnd() * 1.7
+    });
+    prev = close;
+  }
+
+  // 把最后一天收盘对齐到真实报价 1355.90
+  var shift = 1355.90 - candles[N - 1].close;
+  candles.forEach(function (c) {
+    c.open += shift; c.close += shift; c.hi += shift; c.lo += shift;
+    c.chg = (c.close / c.open - 1) * 100;
+  });
+
+  /* ---------- 比例尺 ---------- */
+  var lo = Math.min.apply(null, candles.map(function (c) { return c.lo; }));
+  var hi = Math.max.apply(null, candles.map(function (c) { return c.hi; }));
+  var pad = (hi - lo) * 0.12;
+  var pMin = lo - pad, pMax = hi + pad;
+  var vMax = Math.max.apply(null, candles.map(function (c) { return c.vol; }));
+  var step = (BOX.x1 - BOX.x0) / N;
+
+  var yOf = function (v) {
+    return BOX.y1 - (v - pMin) / (pMax - pMin) * (BOX.y1 - BOX.y0);
+  };
+  var xOf = function (i) { return BOX.x0 + step * (i + 0.5); };
+  var yVol = function (v) {
+    return BOX.v1 - (v / vMax) * (BOX.v1 - BOX.v0);
+  };
+
+  /* ---------- 移动平均 ---------- */
+  function ma(period) {
+    return candles.map(function (_, i) {
+      if (i < period - 1) return null;
+      var sum = 0;
+      for (var k = i - period + 1; k <= i; k++) sum += candles[k].close;
+      return sum / period;
+    });
+  }
+  var MA5 = ma(5), MA20 = ma(20);
+
+  function el(tag, attrs, parent) {
+    var node = document.createElementNS(SVG_NS, tag);
+    for (var k in attrs) node.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  var axisLayer = document.getElementById("axis-layer");
+  var volLayer = document.getElementById("vol-layer");
+  var candleLayer = document.getElementById("candle-layer");
+  var maLayer = document.getElementById("ma-layer");
+
+  /* ---------- 价格网格与右轴 ---------- */
+  var ticks = 4;
+  for (var t = 0; t < ticks; t++) {
+    var pv = lo + (hi - lo) * t / (ticks - 1);
+    var gy = yOf(pv);
+    el("line", {
+      x1: BOX.x0, y1: gy, x2: BOX.x1, y2: gy,
+      "class": "grid-line", "shape-rendering": "crispEdges"
+    }, axisLayer);
+    var lab = el("text", {
+      x: BOX.x1 + 8, y: gy + 3.5, "class": "axis-text"
+    }, axisLayer);
+    lab.textContent = pv.toFixed(1);
+  }
+
+  /* ---------- 成交量 ---------- */
+  el("line", {
+    x1: BOX.x0, y1: BOX.v0 - 6, x2: BOX.x1, y2: BOX.v0 - 6,
+    stroke: "var(--grid)", "stroke-width": 1
+  }, volLayer);
+
+  candles.forEach(function (c, i) {
+    var up = c.close >= c.open;
+    var barW = Math.max(step - 8, 4);
+    el("rect", {
+      x: xOf(i) - barW / 2,
+      y: yVol(c.vol),
+      width: barW,
+      height: Math.max(BOX.v1 - yVol(c.vol), 1),
+      fill: up ? "var(--up)" : "var(--down)",
+      opacity: 0.45,
+      rx: 2
+    }, volLayer);
+  });
+
+  var volLabel = el("text", {
+    x: BOX.x1 + 8, y: BOX.v1 - 2, "class": "axis-text"
+  }, volLayer);
+  volLabel.textContent = "量";
+
+  /* ---------- K 线与影线 ---------- */
+  candles.forEach(function (c, i) {
+    var up = c.close >= c.open;
+    var color = up ? "var(--up)" : "var(--down)";
+    var cx = xOf(i);
+    var bodyW = Math.min(9, step - 6);
+    var yTop = yOf(Math.max(c.open, c.close));
+    var yBot = yOf(Math.min(c.open, c.close));
+
+    el("line", {
+      x1: cx, y1: yOf(c.hi), x2: cx, y2: yOf(c.lo),
+      stroke: color, "stroke-width": 1.2
+    }, candleLayer);
+
+    el("rect", {
+      x: cx - bodyW / 2,
+      y: yTop,
+      width: bodyW,
+      height: Math.max(yBot - yTop, 1.4),
+      fill: up ? "none" : color,
+      stroke: color,
+      "stroke-width": 1.2,
+      rx: 1
+    }, candleLayer);
+  });
+
+  /* ---------- 均线 ---------- */
+  function lineOf(series, color, label) {
+    var d = "", started = false, lastPt = null;
+    series.forEach(function (v, i) {
+      if (v === null) return;
+      d += (started ? " L" : "M") + xOf(i).toFixed(1) + "," + yOf(v).toFixed(1);
+      started = true;
+      lastPt = { x: xOf(i), y: yOf(v), v: v };
+    });
+    el("path", {
+      d: d, fill: "none", stroke: color,
+      "stroke-width": 1.8, "stroke-linejoin": "round", "stroke-linecap": "round"
+    }, maLayer);
+    var tag = el("text", {
+      x: lastPt.x + 6, y: lastPt.y - 6, "class": "axis-text"
+    }, maLayer);
+    tag.textContent = label;
+    tag.setAttribute("fill", color);
+  }
+
+  lineOf(MA5, "#c3c2b7", "MA5");
+  lineOf(MA20, "#9085e9", "MA20");
+
+  /* ---------- 横轴日期 ---------- */
+  candles.forEach(function (_, i) {
+    if (i % 6 !== 0) return;
+    if (N - 1 - i < 3) return; // 末尾太近，避免与相邻标签压字
+    var d = el("text", {
+      x: xOf(i), y: BOX.axisY, "class": "axis-text",
+      "text-anchor": "middle"
+    }, axisLayer);
+    d.textContent = DATES[i].slice(5);
+  });
+
+  var lastDate = el("text", {
+    x: xOf(N - 1), y: BOX.axisY, "class": "axis-text",
+    "text-anchor": "end"
+  }, axisLayer);
+  lastDate.textContent = DATES[N - 1].slice(5);
+
+  /* ---------- 十字光标 + 提示框 ---------- */
+  var svg = document.getElementById("price-chart");
+  var wrap = document.getElementById("chart-wrap");
+  var tip = document.getElementById("tip");
+  var crossLayer = document.getElementById("crosshair-layer");
+
+  var vLine = el("line", {
+    y1: BOX.y0, y2: BOX.v1, "class": "crosshair"
+  }, crossLayer);
+  var hLine = el("line", {
+    x1: BOX.x0, x2: BOX.x1, "class": "crosshair"
+  }, crossLayer);
+  var dot = el("circle", {
+    r: 3.5, fill: "var(--ink-1)", stroke: "var(--surface-1)",
+    "stroke-width": 2, opacity: 0
+  }, crossLayer);
+
+  function fmt(v) {
+    return v.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function showTip(i, ev) {
+    var c = candles[i];
+    var up = c.close >= c.open;
+    var pct = ((c.close / candles[i - 1 > 0 ? i - 1 : 0].close) - 1) * 100;
+
+    vLine.setAttribute("x1", xOf(i));
+    vLine.setAttribute("x2", xOf(i));
+    hLine.setAttribute("y1", yOf(c.close));
+    hLine.setAttribute("y2", yOf(c.close));
+    dot.setAttribute("cx", xOf(i));
+    dot.setAttribute("cy", yOf(c.close));
+    [vLine, hLine].forEach(function (l) { l.style.opacity = 1; });
+    dot.style.opacity = 1;
+
+    tip.innerHTML =
+      '<div class="t-date">' + DATES[i] + "</div>" +
+      '<div class="t-row"><span>开盘</span><b>' + fmt(c.open) + "</b></div>" +
+      '<div class="t-row"><span>最高</span><b>' + fmt(c.hi) + "</b></div>" +
+      '<div class="t-row"><span>最低</span><b>' + fmt(c.lo) + "</b></div>" +
+      '<div class="t-row"><span>收盘</span><b>' + fmt(c.close) + "</b></div>" +
+      '<div class="t-row"><span>涨跌</span><b class="' + (up ? "t-up" : "t-down") + '">' +
+      (up ? "▲ +" : "▼ −") + Math.abs(pct).toFixed(2) + "%</b></div>" +
+      '<div class="t-row"><span>成交量</span><b>' + c.vol.toFixed(2) + " 亿股</b></div>";
+    tip.classList.add("show");
+
+    var wr = wrap.getBoundingClientRect();
+    var px = ev.clientX - wr.left;
+    var py = ev.clientY - wr.top;
+    var tw = tip.offsetWidth;
+    var left = px + 16;
+    if (left + tw > wr.width - 8) left = px - tw - 16;
+    tip.style.left = Math.max(8, left) + "px";
+    tip.style.top = Math.max(8, Math.min(py - 20, wr.height - tip.offsetHeight - 8)) + "px";
+  }
+
+  function hideTip() {
+    tip.classList.remove("show");
+    [vLine, hLine].forEach(function (l) { l.style.opacity = 0; });
+    dot.style.opacity = 0;
+  }
+
+  svg.addEventListener("mousemove", function (ev) {
+    var r = svg.getBoundingClientRect();
+    var x = (ev.clientX - r.left) * 880 / r.width;
+    var i = Math.round((x - BOX.x0) / step - 0.5);
+    if (i < 0 || i >= N) { hideTip(); return; }
+    showTip(i, ev);
+  });
+  svg.addEventListener("mouseleave", hideTip);
+
+  /* ---------- 表格视图（无障碍等价物） ---------- */
+  var tbody = document.getElementById("table-body");
+  candles.slice(-10).reverse().forEach(function (c, k) {
+    var i = N - 1 - k;
+    var up = c.close >= c.open;
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + DATES[i] + "</td>" +
+      '<td class="num">' + fmt(c.open) + "</td>" +
+      '<td class="num">' + fmt(c.hi) + "</td>" +
+      '<td class="num">' + fmt(c.lo) + "</td>" +
+      '<td class="num">' + fmt(c.close) + "</td>" +
+      '<td class="num" style="color:var(--' + (up ? "up" : "down") + ')">' +
+      (up ? "▲ +" : "▼ −") + Math.abs(c.chg).toFixed(2) + "%</td>" +
+      '<td class="num">' + c.vol.toFixed(2) + "</td>";
+    tbody.appendChild(tr);
+  });
+
+  var tableToggle = document.getElementById("table-toggle");
+  var tableView = document.getElementById("table-view");
+  tableToggle.addEventListener("click", function () {
+    var open = tableView.classList.toggle("open");
+    tableToggle.setAttribute("aria-pressed", String(open));
+    tableToggle.textContent = open ? "图表视图" : "表格视图";
+    wrap.classList.toggle("is-hidden", open);
+  });
+
+  /* ---------- 轻提示 ---------- */
+  var toastEl = null, toastTimer = null;
+  function toast(msg) {
+    if (!toastEl) {
+      toastEl = document.createElement("div");
+      toastEl.className = "toast";
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, 2200);
+  }
+
+  /* ---------- 屏幕切换 ---------- */
+  var TITLES = {
+    briefing: ["自选股简报", "2026-10-28 周三 · 3 只自选股 · 巨潮资讯 / 东方财富"],
+    analysis: ["个股深度分析", "贵州茅台 600519 · 日 K · 最近 44 个交易日"]
+  };
+  var pageTitle = document.getElementById("page-title");
+  var pageSub = document.getElementById("page-sub");
+
+  function activate(name, btn) {
+    if (!TITLES[name]) return;
+    document.querySelectorAll(".nav-item").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+    document.querySelectorAll(".screen").forEach(function (s) {
+      s.hidden = s.id !== "screen-" + name;
+    });
+    pageTitle.textContent = TITLES[name][0];
+    pageSub.textContent = TITLES[name][1];
+    if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  }
+
+  document.querySelectorAll(".nav-item").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (btn.hasAttribute("data-stub")) {
+        toast("「" + btn.textContent.trim().replace(/\d+$/, "") + "」在此视觉稿中未展开");
+        return;
+      }
+      activate(btn.dataset.screen, btn);
+      window.scrollTo({ top: 0 });
+    });
+  });
+
+  document.querySelectorAll(".brief-row[data-stub]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      toast("展开完整简报（视觉稿未实现）");
+    });
+  });
+
+  // 直接打开 #analysis 可预览第二屏
+  if (TITLES[location.hash.slice(1)]) {
+    activate(
+      location.hash.slice(1),
+      document.querySelector('.nav-item[data-screen="' + location.hash.slice(1) + '"]')
+    );
+  }
+
+  /* ---------- K 线周期切换（视觉稿中仅切换选中态） ---------- */
+  document.querySelectorAll(".seg").forEach(function (seg) {
+    seg.addEventListener("click", function (ev) {
+      var b = ev.target.closest("button");
+      if (!b) return;
+      seg.querySelectorAll("button").forEach(function (x) {
+        x.setAttribute("aria-pressed", String(x === b));
+      });
+    });
+  });
+
+  /* ---------- 付费墙 ---------- */
+  var paywall = document.getElementById("paywall");
+  function openPaywall() {
+    paywall.classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+  function closePaywall() {
+    paywall.classList.remove("open");
+    document.body.style.overflow = "";
+  }
+  document.querySelectorAll("[data-open-paywall]").forEach(function (b) {
+    b.addEventListener("click", openPaywall);
+  });
+  document.querySelectorAll("[data-close-paywall]").forEach(function (b) {
+    b.addEventListener("click", closePaywall);
+  });
+  paywall.addEventListener("click", function (ev) {
+    if (ev.target === paywall) closePaywall();
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape") closePaywall();
+  });
+
+  if (location.hash === "#paywall") openPaywall(); // 直接预览付费墙
+
+  document.getElementById("pay-btn").addEventListener("click", function () {
+    document.querySelector(".plan-name").textContent = "Pro";
+    document.querySelector(".plan-usage").textContent = "1 / 20 只";
+    document.querySelector(".plan-bar > i").style.width = "5%";
+    var up = document.querySelector(".sidebar .btn-primary");
+    up.textContent = "已升级 Pro";
+    up.disabled = true;
+    closePaywall();
+    toast("已切换为 Pro 套餐（模拟支付，未扣款）");
+  });
+
+  /* ---------- 重新生成 ---------- */
+  var refresh = document.getElementById("refresh-btn");
+  refresh.addEventListener("click", function () {
+    refresh.disabled = true;
+    refresh.textContent = "生成中…";
+    setTimeout(function () {
+      refresh.disabled = false;
+      refresh.textContent = "重新生成";
+      document.querySelector(".card-head .hint").textContent = "生成于 10:04 · 已缓存";
+      toast("简报已重新生成（演示数据）");
+    }, 900);
+  });
+})();
+</script>
+</body>
+</html>

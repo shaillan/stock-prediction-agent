@@ -1,0 +1,14 @@
+# 主题与 design/ui_mockup.html 保持一致；改色时两处一起改
+[theme]
+base = "dark"
+primaryColor = "#e0a33a"
+backgroundColor = "#0a0c10"
+secondaryBackgroundColor = "#11151c"
+textColor = "#e8edf5"
+font = "sans serif"
+
+[server]
+runOnSave = true
+
+[browser]
+gatherUsageStats = false

@@ -128,6 +128,22 @@ def build_graph() -> StateGraph:
     return compiled
 
 
+def _save_track_record(final_state: dict) -> None:
+    """预测存档（战绩跟踪）。失败只记日志——存档绝不能弄挂分析主流程。"""
+    try:
+        from config import settings
+        if not settings.track_records_enabled:
+            return
+        if final_state.get("status") != "done" or not (final_state.get("prediction") or {}).get("trend"):
+            return
+        from utils.track_record import save_prediction
+        rec = save_prediction(final_state)
+        if rec:
+            logger.info(f"🏆 预测已存档，到期后可在「战绩」页复盘: {rec['stock_code']} {rec['prediction_date']}")
+    except Exception as e:
+        logger.warning(f"预测存档失败（不影响分析结果）: {e}")
+
+
 def run_agent(
     stock_code: str,
     start_date: str = "",
@@ -169,6 +185,7 @@ def run_agent(
     try:
         final_state = graph.invoke(initial_state)
         logger.info(f"🏁 工作流完成: status={final_state.get('status')}, errors={len(final_state.get('errors', []))}")
+        _save_track_record(final_state)
         return final_state
     except Exception as e:
         logger.error(f"❌ 工作流异常: {e}")

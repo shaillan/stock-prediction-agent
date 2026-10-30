@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     rag_top_k: int = 3              # 每个研究问题检索的片段数
     rag_announcement_days: int = 180  # 回溯多少天的公告
 
+    # ========== 预测战绩跟踪 ==========
+    track_records_enabled: bool = True  # 每次分析后自动存档预测，供「战绩」页复盘
+    records_file: str = "records/predictions.jsonl"  # 存档路径（相对项目根）
+
     # ========== UI 配置 ==========
     page_title: str = "📈 股票智能预测工作流"
     default_stock: str = "600519"  # 贵州茅台

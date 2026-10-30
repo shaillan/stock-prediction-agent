@@ -6,6 +6,11 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from typing import Optional, Dict
 
+from ui.chart_theme import (
+    C_BLUE, C_MAGENTA, C_ORANGE, C_VIOLET, DOWN, GRID, INK_2, INK_3,
+    REF, UP, apply_dark,
+)
+
 
 def _safe_values(series, fillna=True):
     """将 Series/array 转为 plotly 安全的一维数组，去掉 NaN"""
@@ -49,9 +54,14 @@ def render_kline_chart(
             text="暂无K线数据",
             xref="paper", yref="paper",
             x=0.5, y=0.5, showarrow=False,
-            font=dict(size=20, color="gray"),
+            font=dict(size=16, color=INK_3),
         )
-        fig.update_layout(title=f"{stock_name}（{stock_code}）- 无数据")
+        fig.update_layout(
+            title=f"{stock_name}（{stock_code}）- 无数据",
+            template="plotly_dark",
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=INK_2, size=11),
+        )
         return fig
 
     # 确保数据类型正确
@@ -89,15 +99,17 @@ def render_kline_chart(
             low=_safe_values(df["low"]),
             close=_safe_values(df["close"]),
             name="K线",
-            increasing_line_color="#e53e3e",
-            decreasing_line_color="#38a169",
+            increasing_line_color=UP,
+            increasing_fillcolor="rgba(0,0,0,0)",   # 涨：空心
+            decreasing_line_color=DOWN,
+            decreasing_fillcolor=DOWN,              # 跌：实心
             showlegend=True,
         ),
         row=1, col=1,
     )
 
     # 叠加均线
-    ma_colors = {"ma5": "#FF9800", "ma10": "#2196F3", "ma20": "#9C27B0", "ma60": "#4CAF50"}
+    ma_colors = {"ma5": C_BLUE, "ma10": C_ORANGE, "ma20": C_VIOLET, "ma60": C_MAGENTA}
     if indicators:
         for ma_name, color in ma_colors.items():
             if ma_name in indicators:
@@ -125,7 +137,7 @@ def render_kline_chart(
                 go.Scatter(
                     x=date_arr, y=boll_upper,
                     name="布林上轨",
-                    line=dict(width=0.8, color="gray", dash="dash"),
+                    line=dict(width=0.8, color="#4a5468"),
                     showlegend=True,
                 ),
                 row=1, col=1,
@@ -134,9 +146,9 @@ def render_kline_chart(
                 go.Scatter(
                     x=date_arr, y=boll_lower,
                     name="布林下轨",
-                    line=dict(width=0.8, color="gray", dash="dash"),
+                    line=dict(width=0.8, color="#4a5468"),
                     fill="tonexty",
-                    fillcolor="rgba(128, 128, 128, 0.1)",
+                    fillcolor="rgba(74, 84, 104, 0.05)",
                     showlegend=True,
                 ),
                 row=1, col=1,
@@ -146,7 +158,7 @@ def render_kline_chart(
     close_arr = _safe_values(df["close"])
     open_arr = _safe_values(df["open"])
     vol_arr = _safe_values(df["volume"])
-    colors = ["#e53e3e" if (c is not None and o is not None and c >= o) else "#38a169"
+    colors = [UP if (c is not None and o is not None and c >= o) else DOWN
               for c, o in zip(close_arr, open_arr)]
     fig.add_trace(
         go.Bar(
@@ -167,7 +179,7 @@ def render_kline_chart(
                 go.Scatter(
                     x=_safe_values(df["date"], fillna=False), y=vol_ma,
                     name="VOL MA5",
-                    line=dict(width=1, color="#FF9800"),
+                    line=dict(width=1, color=C_BLUE),
                     showlegend=False,
                 ),
                 row=2, col=1,
@@ -180,76 +192,71 @@ def render_kline_chart(
             dif = _safe_values(indicators["macd_dif"])
             if dif is not None:
                 fig.add_trace(
-                    go.Scatter(x=date_arr, y=dif,
-                        name="DIF", line=dict(width=1.2, color="#2196F3")),
+                    go.Scatter(x=date_arr, y=dif, showlegend=False,
+                        name="DIF", line=dict(width=1.2, color=C_BLUE)),
                     row=3, col=1,
                 )
         if "macd_dea" in indicators:
             dea = _safe_values(indicators["macd_dea"])
             if dea is not None:
                 fig.add_trace(
-                    go.Scatter(x=date_arr, y=dea,
-                        name="DEA", line=dict(width=1.2, color="#FF9800")),
+                    go.Scatter(x=date_arr, y=dea, showlegend=False,
+                        name="DEA", line=dict(width=1.2, color=C_ORANGE)),
                     row=3, col=1,
                 )
         if "macd_hist" in indicators:
             hist = _safe_values(indicators["macd_hist"])
             if hist is not None:
-                hist_colors = ["#e53e3e" if (h is not None and h >= 0) else "#38a169" for h in hist]
+                hist_colors = [UP if (h is not None and h >= 0) else DOWN for h in hist]
                 fig.add_trace(
-                    go.Bar(x=date_arr, y=hist, name="MACD柱", marker_color=hist_colors),
+                    go.Bar(x=date_arr, y=hist, name="MACD柱",
+                           marker_color=hist_colors, showlegend=False),
                     row=3, col=1,
                 )
 
         # 零轴参考线
-        fig.add_hline(y=0, line_dash="solid", line_color="gray",
-                      line_width=0.5, row=3, col=1)
+        fig.add_hline(y=0, line_dash="solid", line_color=REF,
+                      line_width=0.8, row=3, col=1)
 
     # ===== Row 4: RSI =====
     if indicators:
         date_arr = _safe_values(df["date"], fillna=False)
-        rsi_colors = {"rsi6": "#e53e3e", "rsi14": "#2196F3", "rsi24": "#9C27B0"}
+        rsi_colors = {"rsi6": C_BLUE, "rsi14": C_ORANGE, "rsi24": C_VIOLET}
         for rsi_name, color in rsi_colors.items():
             if rsi_name in indicators:
                 rsi = _safe_values(indicators[rsi_name])
                 if rsi is not None:
                     fig.add_trace(
-                        go.Scatter(x=date_arr, y=rsi,
+                        go.Scatter(x=date_arr, y=rsi, showlegend=False,
                             name=rsi_name.upper(),
                             line=dict(width=1.2, color=color)),
                         row=4, col=1,
                     )
 
-        # RSI 参考线 (30 和 70)
-        fig.add_hline(y=70, line_dash="dash", line_color="red",
+        # RSI 参考线 (30 和 70)：用同一档发丝实线，不用红绿（红绿在这是涨跌专用）
+        for level in (70, 30):
+            fig.add_hline(y=level, line_dash="solid", line_color=REF,
+                          line_width=0.8, row=4, col=1)
+        fig.add_hline(y=50, line_dash="solid", line_color=GRID,
                       line_width=0.8, row=4, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green",
-                      line_width=0.8, row=4, col=1)
-        fig.add_hline(y=50, line_dash="dot", line_color="gray",
-                      line_width=0.5, row=4, col=1)
 
-    # ===== 布局设置 =====
+    # ===== 布局设置（深色，和页面同一套 token）=====
+    apply_dark(fig, height=860, legend=True)
     fig.update_layout(
-        height=900,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-        ),
         hovermode="x unified",
         xaxis_rangeslider_visible=False,
-        margin=dict(l=0, r=0, t=40, b=0),
-        template="plotly_white",
+        margin=dict(l=0, r=0, t=44, b=0),
     )
+    # 竖直游标：横向扫过时能对齐四张子图
+    fig.update_xaxes(showspikes=True, spikecolor=INK_3,
+                     spikethickness=1, spikedash="solid")
 
-    # Y轴标签
-    fig.update_yaxes(title_text="价格", row=1, col=1)
-    fig.update_yaxes(title_text="成交量", row=2, col=1)
-    fig.update_yaxes(title_text="MACD", row=3, col=1)
-    fig.update_yaxes(title_text="RSI", row=4, col=1)
-    fig.update_xaxes(title_text="日期", row=4, col=1)
+    # 子图标题：左对齐、弱化成小字。面板名已经在标题里，Y 轴就不再重复写"价格/成交量"
+    for ann in fig.layout.annotations:
+        ann.font.update(color=INK_3, size=11)
+        ann.x, ann.xanchor = 0.0, "left"
+
+    fig.update_yaxes(title_text=None)
+    fig.update_yaxes(range=[0, 100], row=4, col=1)
 
     return fig

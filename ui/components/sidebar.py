@@ -6,6 +6,98 @@ from datetime import date, timedelta
 from data.stock_registry import StockRegistry
 
 
+def render_mode_selector() -> str:
+    """侧边栏最上方的功能模式切换。返回 "analysis" / "briefing" / "agent"。
+
+    放在侧边栏而不是 st.tabs：几种模式用的是完全不同的控件组合，
+    挤在一个页面里会让侧边栏出现大量「在这个模式下没意义」的输入框。
+    """
+    with st.sidebar:
+        st.markdown("## 🧭 功能模式")
+        mode = st.radio(
+            "功能模式",
+            ["📈 个股深度分析", "🔔 自选股简报", "💬 智能问答"],
+            label_visibility="collapsed",
+            key="app_mode",
+        )
+        st.markdown("---")
+    if mode.startswith("🔔"):
+        return "briefing"
+    if mode.startswith("💬"):
+        return "agent"
+    return "analysis"
+
+
+def render_llm_config() -> dict:
+    """LLM 模型配置控件（两种模式共用，所以在侧边栏原地渲染）"""
+    with st.sidebar:
+        st.markdown("## ⚙️ LLM 模型配置")
+        with st.expander("展开配置", expanded=False):
+            from config import settings
+
+            from utils.llm_factory import default_base_url_for
+
+            model_options = [
+                "claude-sonnet-4-20250514",
+                "claude-opus-4-20250514",
+                "gpt-4o",
+                "gpt-4-turbo",
+                "gpt-4o-mini",
+                "deepseek-v4-flash",
+                "glm-5.3-flash",
+                "glm-5.3-flashx",
+            ]
+
+            def _sync_base_url():
+                """切换模型时把 Base URL 带到该厂商的默认端点，避免沿用上一家的地址"""
+                auto = default_base_url_for(st.session_state.llm_model_select)
+                if auto:
+                    st.session_state.llm_base_url_input = auto
+                else:
+                    st.session_state.llm_base_url_input = ""
+
+            llm_model = st.selectbox(
+                "模型选择",
+                options=model_options,
+                index=model_options.index(settings.llm_model)
+                if settings.llm_model in model_options else 0,
+                key="llm_model_select",
+                on_change=_sync_base_url,
+                help="选择用于分析的 LLM 模型；切换后 Base URL 会自动带出对应厂商的端点",
+            )
+
+            llm_api_key = st.text_input(
+                "API Key",
+                value=settings.llm_api_key,
+                type="password",
+                placeholder="输入你的 API Key",
+                help="注意：不同厂商的 Key 不通用，切换模型后请换成对应的 Key",
+            )
+
+            # Base URL 用 key 绑定 session_state：切换模型时由上面的回调改写
+            if "llm_base_url_input" not in st.session_state:
+                st.session_state.llm_base_url_input = (
+                    default_base_url_for(settings.llm_model) or settings.llm_base_url
+                )
+
+            llm_base_url = st.text_input(
+                "Base URL（可选）",
+                key="llm_base_url_input",
+                placeholder="留空则按模型名自动选择端点",
+                help="智谱 GLM: https://open.bigmodel.cn/api/paas/v4\n"
+                     "DeepSeek: https://api.deepseek.com/v1\n"
+                     "Ollama: http://localhost:11434/v1",
+            )
+
+        st.markdown("---")
+
+    return {
+        "llm_model": llm_model,
+        "llm_api_key": llm_api_key,
+        "llm_base_url": llm_base_url,
+    }
+
+
 def render_sidebar() -> dict:
     """渲染侧边栏，返回用户配置
 
@@ -76,84 +168,25 @@ def render_sidebar() -> dict:
 
         # 日期范围
         st.markdown("## 📅 分析周期")
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date = st.date_input(
-                "起始日期",
-                value=date.today() - timedelta(days=365),
-                max_value=date.today(),
-            )
-        with col2:
-            end_date = st.date_input(
-                "结束日期",
-                value=date.today(),
-                max_value=date.today(),
-            )
+        start_date = st.date_input(
+            "起始日期",
+            value=date.today() - timedelta(days=365),
+            max_value=date.today(),
+        )
+        end_date = st.date_input(
+            "结束日期",
+            value=date.today(),
+            max_value=date.today(),
+        )
 
         st.markdown("---")
 
-        # LLM 配置
-        st.markdown("## ⚙️ LLM 模型配置")
-        with st.expander("展开配置", expanded=False):
-            from config import settings
-
-            from utils.llm_factory import default_base_url_for
-
-            model_options = [
-                "claude-sonnet-4-20250514",
-                "claude-opus-4-20250514",
-                "gpt-4o",
-                "gpt-4-turbo",
-                "gpt-4o-mini",
-                "deepseek-v4-flash",
-                "glm-5.3-flash",
-                "glm-5.3-flashx",
-            ]
-
-            def _sync_base_url():
-                """切换模型时把 Base URL 带到该厂商的默认端点，避免沿用上一家的地址"""
-                auto = default_base_url_for(st.session_state.llm_model_select)
-                if auto:
-                    st.session_state.llm_base_url_input = auto
-                else:
-                    st.session_state.llm_base_url_input = ""
-
-            llm_model = st.selectbox(
-                "模型选择",
-                options=model_options,
-                index=model_options.index(settings.llm_model)
-                if settings.llm_model in model_options else 0,
-                key="llm_model_select",
-                on_change=_sync_base_url,
-                help="选择用于分析的 LLM 模型；切换后 Base URL 会自动带出对应厂商的端点",
-            )
-
-            llm_api_key = st.text_input(
-                "API Key",
-                value=settings.llm_api_key,
-                type="password",
-                placeholder="输入你的 API Key",
-                help="注意：不同厂商的 Key 不通用，切换模型后请换成对应的 Key",
-            )
-
-            # Base URL 用 key 绑定 session_state：切换模型时由上面的回调改写
-            if "llm_base_url_input" not in st.session_state:
-                st.session_state.llm_base_url_input = (
-                    default_base_url_for(settings.llm_model) or settings.llm_base_url
-                )
-
-            llm_base_url = st.text_input(
-                "Base URL（可选）",
-                key="llm_base_url_input",
-                placeholder="留空则按模型名自动选择端点",
-                help="智谱 GLM: https://open.bigmodel.cn/api/paas/v4\n"
-                     "DeepSeek: https://api.deepseek.com/v1\n"
-                     "Ollama: http://localhost:11434/v1",
-            )
-
-        st.markdown("---")
+        # LLM 配置（控件在 render_llm_config 里，两种模式共用）
+        llm_cfg = render_llm_config()
 
         # 公告检索 RAG 开关
+        from config import settings
+
         rag_enabled = st.toggle(
             "📢 公告全文检索（RAG）",
             value=settings.rag_enabled,
@@ -178,9 +211,7 @@ def render_sidebar() -> dict:
         "stock_name": st.session_state.stock_name,
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
-        "llm_model": llm_model,
-        "llm_api_key": llm_api_key,
-        "llm_base_url": llm_base_url,
+        **llm_cfg,
         "rag_enabled": rag_enabled,
         "run_clicked": run_clicked,
     }
