@@ -12,6 +12,8 @@
 """
 import streamlit as st
 
+from ui.components.trace_card import render_trace_card
+
 _HISTORY_KEY = "agent_history"
 # 默认头像是 Streamlit 自带的红色小人图标，跟本站的琥珀色暗主题撞色；换成 emoji，
 # 同时让「实时流式」和「事后回放」两条渲染路径共用同一份头像定义
@@ -101,6 +103,10 @@ def _render_history() -> None:
                 )
                 box.write(t.get("summary", ""))
             st.markdown(turn.get("content", ""))
+            # 溯源卡：数字 → 哪次工具调用、公告 → 哪份原文、以及未溯源数字的告警
+            render_trace_card(turn)
+            if turn.get("trace") and not turn.get("tools"):
+                st.caption(f"📄 本轮轨迹：{turn['trace']}")
 
     if not history:
         with st.container(border=True):
@@ -114,6 +120,8 @@ def _render_history() -> None:
 
 def _answer(question: str, llm_cfg: dict) -> None:
     from agent_mode.loop import DEFAULT_MAX_STEPS, stream_agent_mode
+    from harness.budget import from_settings
+    from harness.trace import Tracer
 
     # 先取历史（不含本轮），再把本轮问题记进去
     history = list(_history())
@@ -140,7 +148,11 @@ def _answer(question: str, llm_cfg: dict) -> None:
 
     code = st.session_state.get("agent_stock", "")
     max_steps = st.session_state.get("agent_max_steps", DEFAULT_MAX_STEPS)
+    budget = from_settings(max_steps)
+    tracer = Tracer(question=question, stock_code=code,
+                    model=llm_cfg.get("llm_model", ""))
     final = ""
+    usage = {}          # 本轮 token/耗时，溯源卡底部要显示
     trace = []          # 本轮工具轨迹，结束后跟答案一起进历史
     record = {}         # step → trace 里的那条，tool_end 时把 summary 补进去
 
@@ -158,17 +170,27 @@ def _answer(question: str, llm_cfg: dict) -> None:
                 max_steps=max_steps,
                 llm=llm,
                 history=history,
+                budget=budget,
+                tracer=tracer,
             ):
                 if ev["type"] == "tool_start":
                     boxes[ev["step"]] = st.status(
                         f"🔧 {ev['name']}（{_short(ev['args'])}）", expanded=False)
                     # tool_start 一轮内按调用顺序全局先发，在这里入列即可保序
-                    record[ev["step"]] = {"name": ev["name"], "args": ev["args"],
-                                           "summary": ""}
+                    record[ev["step"]] = {
+                        "name": ev["name"], "args": ev["args"], "summary": "",
+                        "result": "", "elapsed_ms": 0, "cached": False, "retries": 0,
+                    }
                     trace.append(record[ev["step"]])
                 elif ev["type"] == "tool_end":
                     if ev["step"] in record:
-                        record[ev["step"]]["summary"] = ev["summary"]
+                        record[ev["step"]].update({
+                            "summary": ev["summary"],
+                            "result": ev.get("result", ""),
+                            "elapsed_ms": ev.get("elapsed_ms", 0),
+                            "cached": ev.get("cached", False),
+                            "retries": ev.get("retries", 0),
+                        })
                     box = boxes.get(ev["step"])
                     if box is not None:
                         # state="complete" 自带一个对勾图标，标签里再写 ✅ 会变成双勾
@@ -184,8 +206,12 @@ def _answer(question: str, llm_cfg: dict) -> None:
                     # "我先查一下…"的铺垫，那段已经流式显示出来了，历史里也得有，
                     # 否则一刷新，屏幕上的字就少了一截
                     final = "".join(parts) or ev["answer"]
+                    usage = ev.get("usage") or {}
                     if ev["stopped"] == "cap":
                         st.caption("（已到步数上限，基于已收集到的信息收尾）")
+                    elif ev["stopped"] == "budget":
+                        st.caption(f"（预算触发：{ev.get('budget_reason')}，"
+                                   f"基于已收集到的信息收尾）")
                     break
         except Exception as e:  # noqa: BLE001
             # 已经在 assistant 气泡里了，别再套一层 chat_message
@@ -200,7 +226,8 @@ def _answer(question: str, llm_cfg: dict) -> None:
                 placeholder = st.empty()
             placeholder.markdown(final)
 
-    _history().append({"role": "assistant", "content": final, "tools": trace})
+    _history().append({"role": "assistant", "content": final, "tools": trace,
+                       "usage": usage, "trace": tracer.rel_path()})
     # 重跑一趟：这一趟的「空状态」引导卡是在提问之前就画上去的，
     # 不清掉的话它会一直挂在对话上方，直到用户碰下一个控件才消失。
     # 重跑后这轮由 _render_history 统一回放（工具 + 答案），不会重复。

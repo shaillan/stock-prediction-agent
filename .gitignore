@@ -17,6 +17,9 @@ cache/
 # 战绩存档（本地运行数据）
 records/
 
+# Agent harness 轨迹与评测报告（本地运行数据，可能含提问原文）
+runs/
+
 # 日志
 logs/
 *.log

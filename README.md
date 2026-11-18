@@ -19,6 +19,8 @@
 - 🧪 **回测框架**：规则信号 walk-forward 回测 + 显著性检验（t 值），可证伪地检验"信号有没有预测力"
 - 🔔 **自选股简报（商业 Demo）**：每天用大白话讲清自选股发生了什么，免费 3 只 / 付费 20 只，含付费墙与模拟支付
 - 💬 **智能问答（Agent 模式）**：聊天提问，模型自己决定查行情/财务/新闻/公告，答案流式输出、支持多轮追问
+- 🧰 **Agent 运行时 harness**：工具超时/重试/缓存、token 与墙钟预算、脱敏轨迹落盘、14 条回归评测（改 prompt 前后可比较）
+- 🔎 **结论溯源卡**：答案里每个数字指回哪次工具调用、公告指回哪份原文，模型编出来的数字会被单独标出来
 - 📖 **新手科普**：14 个概念的大白话解释 + 配图，给完全没接触过股票的人
 - 🤖 **多模型支持**：Claude / GPT-4o / DeepSeek / Ollama 等兼容 API
 
@@ -101,7 +103,7 @@ LangGraph LLM 工作流（7 节点 / 8 静态边 + 1 条件边）
 上面"要补三样东西"清单的答案在 `agent_mode/`——一条**与工作流并存**的实验路径，不改主流程：
 
 - `bind_tools` ✅：`tools.py` 把 5 个数据能力包装成 LLM 可调的工具（行情+技术指标 / 财务 / 新闻 / 公告 RAG / 战绩查询）
-- 循环 ✅：`loop.py` 手写 ReAct 循环（不用 `create_react_agent`，每一步都看得见），带轨迹日志
+- 循环 ✅：`harness/runtime.py` 手写 ReAct 循环（不用 `create_react_agent`，每一步都看得见），`agent_mode/loop.py` 只是薄壳
 - 步数上限 ✅：命令行默认 12 轮工具（界面默认 8 轮，可在 2–20 之间调），到顶强制"不带工具、只基于已收集信息"收尾——成本护栏
 
 两种入口：
@@ -113,9 +115,62 @@ LangGraph LLM 工作流（7 节点 / 8 静态边 + 1 条件边）
 
 **仍然默认走工作流**：确定性任务（每日固定分析）用工作流，便宜、可预期、好排查；开放式问题用 Agent 模式。工具失败不会中断循环——报错文本回喂给模型，由它决定重试（最多一次）还是换路，延续主流程"缺口诚实"的哲学。
 
-> 📌 实现上，CLI 与界面共用同一个事件生成器（`loop.py` 的 `_iter_agent_events`）：非流式路径 `run_agent_mode` 把它拼回 dict，流式路径 `stream_agent_mode` 交给界面逐条渲染，两条路径不会跑偏。**一轮里模型要多个工具时并行执行**（`ThreadPoolExecutor.map` 保序回填，轨迹顺序仍确定）。界面只把 Q/A 和工具摘要写进会话历史，刷新页面工具步骤也不会丢。
+> 📌 实现上，CLI 与界面共用同一个事件生成器（`harness/runtime.py` 的 `iter_agent_events`）：非流式路径 `run_agent_mode` 把它拼回 dict，流式路径 `stream_agent_mode` 交给界面逐条渲染，两条路径不会跑偏。**一轮里模型要多个工具时并行执行**（`ThreadPoolExecutor.map` 保序回填，轨迹顺序仍确定）。界面只把 Q/A 和工具摘要写进会话历史，刷新页面工具步骤也不会丢。
 
 > 📌 注意上表"本项目"指的是 `agent/` 主流程：**「个股深度分析」页跑的仍是工作流**；Agent 模式是并列的第三项功能，不是主流程的替代。
+
+### Harness：Agent 运行时层
+
+Agent 模式跑通之后，真正妨碍迭代的不是循环本身，而是循环外面缺的三件事：**出问题不知道卡在哪、一次问答花多少 token 没账、改完 prompt 不知道是变好还是变坏**。`harness/` 就是补这三件事的一层，业务能力仍留在 `data/` 与 `rag/`：
+
+| 模块 | 职责 |
+|---|---|
+| `harness/registry.py` | 工具注册表：schema + 超时 + 重试 + 缓存 |
+| `harness/runtime.py` | ReAct 循环与事件流（`agent_mode/loop.py` 现在只是薄壳） |
+| `harness/budget.py` | 步数 / token / 墙钟 / 成本预算，触顶转降级收尾 |
+| `harness/trace.py` | 逐事件写 `runs/<日期>/<run_id>.jsonl`，落盘前统一脱敏 |
+| `harness/context.py` | 历史消息按字符预算裁剪（从最旧开始丢） |
+| `harness/evals/` | 固定用例集 + 确定性打分 + 可比较报告 |
+
+三个设计约束，和项目其它部分的哲学一致：
+
+1. **事件是唯一真相**：循环只产 `tool_start / tool_end / token / done` 四种事件，CLI、界面、评测都是消费者，不各写一套循环。
+2. **预算由代码兜底**：模型无视"快没预算了"没关系，`Budget.limit_reason()` 会在下一轮开头把 `stopped` 改成 `budget` 并强制不带工具收尾——和主流程"置信度封顶 0.6"同一个思路。
+3. **轨迹脱敏后才落盘**：`sk-` 开头的 key、`api_key=` / `authorization:` 这类键值一律替换成 `***`，对应项目约束「不要把密钥上传了」。
+
+**轨迹与成本**：命令行默认写轨迹，结尾打印本次耗时、token、成本（`config.py` 里没填单价就如实显示"未配置"，不编数字）：
+
+```bash
+python -m agent_mode "600519 最近走势如何" --code 600519   # 默认写 runs/
+python -m agent_mode "..." --no-trace --max-steps 3        # 不写轨迹 / 收紧预算
+tail -n 5 runs/index.jsonl                                 # 所有运行的摘要索引
+```
+
+
+**评测闭环**：用例是 JSONL，一行一条，断言"该调的工具调没调、该说的免责声明说没说、步数有没有失控"：
+
+```bash
+python -m harness.evals.run                   # 跑 smoke 全集（14 条）
+python -m harness.evals.run --case market     # 按 id 过滤，省钱调试
+python -m harness.evals.run --limit 3 --no-trace
+```
+
+```json
+{"id":"announce-1","question":"600519 大股东最近有没有减持？","stock_code":"600519",
+ "must_call":["search_announcements"],"max_steps":6,"note":"减持只能从公告原文里查"}
+```
+
+全部通过退出码 0，有失败退出码 1——以后接 CI 不用改脚本。报告写在 `runs/evals/<时间戳>.json`。
+
+> 📌 为什么不用 LangSmith / Langfuse：本地 JSONL 零依赖、可 grep、可进 gitignore；真需要可视化时，`Tracer._append` 就是一个现成的导出接口。
+
+**结论溯源卡**（`ui/components/trace_card.py`）：智能问答页每条回答下面挂一张可展开的卡，三层信息全部来自 `tool_end` 事件：
+
+- **数据来源**：每次工具调用的参数、耗时、是否命中缓存、重试次数、**完整原始返回**
+- **数字核对**：答案里的数字（带小数 / 百分号 / 四位以上整数）必须能在本轮工具返回里找到，允许 0.5% 的四舍五入误差；找不到的单独列出来并告警——这同时是一道"模型有没有编数字"的自动检查
+- **公告依据**：本轮命中的公告标题 + 日期 + 原文片段（页码要等 RAG 切块带 page 元数据，属于建库口径升级）
+
+6 位纯整数按股票代码处理、不参与核对；「近5日」「3 个步骤」这类计数也不参与，避免把噪声当问题。数字核对是**启发式**：它证明"这个数字来自工具"，不证明"工具的数据本身是对的"——后者要靠数据巡检与 gold 对账。
 
 ### 降级：从「节点内吞错」升级为「图层面路由」
 
@@ -158,6 +213,7 @@ LangGraph LLM 工作流（7 节点 / 8 静态边 + 1 条件边）
 - 两类过滤规则都记在向量库 metadata 里当"口径"，**改了口径会自动重建索引**，不会让你对着旧库怀疑改动没生效
 - 为什么是混合检索：纯向量匹配"主题"，问"大股东有没有减持"会命中一堆《股东会通知》而漏掉真正的答案；加关键词这一路后答案从"榜上无名"升到第 1 名
 - 可在侧边栏关闭（首次运行较慢时）
+- **检索评测**：`python -m rag.eval` 用 11 条标注问题算 Recall@k / Precision@k / MRR（文档级，同一公告的多个块先按标题去重），只跑检索、不调 LLM
 
 > 📖 **检索怎么调、怎么验证**：见 [`rag/TUTORIAL.md`](rag/TUTORIAL.md) —— 含"为什么相似度距离没有意义，要看 gap"、实测前后对照、`diagnose` 命令的用法，以及一个反直觉的坑（**别顺手删《法律意见书》**：RRF 是排名制，删它反而会把错答案顶上第 1 名）。
 
@@ -244,7 +300,24 @@ python -m backtest.run --stocks 600519,000858 --start 2022-01-01 --end 2024-12-3
 python -m backtest.run --signals all
 ```
 
-> ⚠️ **一个诚实的结论**：实测 8 个技术指标规则信号（趋势跟随、均线排列、MACD、KDJ、放量突破、RSI/布林/威廉反转）在 A 股大盘股上**都没有稳健的预测力**——全池净胜率 ≤ 0，最强的 RSI 反转 t 值仅 +1.27（|t|<2 即噪声）。详见 `backtest/signals.py` 与记忆文档。这正是把公告全文作为**新信号源**引入的动机：技术指标这条路已被证明走不通。
+### 输出怎么读
+
+排行榜会**同时打印两套口径**，这是关键——只看一套会得出错误结论：
+
+| 口径 | 判定规则 | 用途 |
+|---|---|---|
+| **A · 三分类** | 涨超 +2% 才算涨、跌超 -2% 才算跌，其余算「震荡」 | 看信号在实际行情里的完整表现 |
+| **B · 纯方向** | 涨就是涨、跌就是跌，只在信号敢给方向时评估 | **判断"方向准不准"请看这一栏** |
+
+口径 A 有个先天陷阱：A 股一大半时间在震荡，**信号越敢开口就越容易猜错**，所以「少说话的信号」反而排前面。表里因此多了一列 **`理论上限`**——假设信号"开口时次次都对、闭嘴时刚好都撞上震荡"，它在口径 A 下能拿到的最高分。**上限是负数的行（比如 MACD 单指标），就算能预知未来也赢不了**，那几行的负分是口径给的，不是信号差。
+
+读表只要记住三条：
+
+1. **命中率** 单独没有意义，必须和 **最佳基线**（永远只猜同一个方向能拿多少分）比；
+2. **净胜率 = 命中率 − 最佳基线**，> 0 才算真有本事；
+3. **t 值 = 净胜率 ÷ 运气波动的幅度**，`|t| < 2` 时这点优势很可能只是运气。
+
+> ⚠️ **一个诚实的结论**：实测 8 个技术指标规则信号（趋势跟随、均线排列、MACD、KDJ、放量突破、RSI/布林/威廉反转）在 A 股大盘股上**都没有稳健的预测力**——纯方向口径下净胜率全部在 ±0.6% 内，|t| 全部 < 2.6，最好的 KDJ 也只有 +1.43（噪声）。详见 `backtest/signals.py` 与记忆文档。这正是把公告全文作为**新信号源**引入的动机：技术指标这条路已被证明走不通。
 
 ---
 
@@ -345,6 +418,8 @@ stock-prediction-agent/
 │   ├── lexical.py             # 关键词检索（jieba 分词 + BM25 + RRF 融合）
 │   ├── query.py               # 混合检索 + LLM 回答
 │   ├── diagnose.py            # 检索质量诊断（gap / 两路冠军 / 融合排名）
+│   ├── eval.py                # 检索评测：Recall@k / Precision@k / MRR
+│   ├── gold_600519.jsonl      # 11 条标注问题（gold 公告标题 + 日期）
 │   ├── service.py             # 供流水线调用的 build_stock_context
 │   ├── cli.py                 # 命令行入口（index/ask/retrieve/diagnose/collections/context）
 │   └── TUTORIAL.md            # 检索优化教程（怎么判断准不准、怎么调）
@@ -372,12 +447,25 @@ stock-prediction-agent/
 │       ├── beginner_guide.py    # 新手科普：14 个概念的扫盲 + 当前股票真实数值当例子
 │       ├── guide_figures.py     # 科普配图：8 张合成数据的 Plotly 教学小图（K线解剖/金叉/超买超卖…）
 │       ├── briefing.py          # 自选股简报页：自选管理 + 付费墙 + 简报卡片
+│       ├── trace_card.py        # 结论溯源卡：数字核对 / 数据来源 / 公告依据
 │       └── progress_display.py  # 进度指示
 │
 ├── agent_mode/                # Agent 模式（实验）：LLM 自主调工具的 ReAct 循环
-│   ├── tools.py               # 5 个工具（行情/财务/新闻/公告RAG/战绩）+ 注册表
-│   ├── loop.py                # 手写 ReAct 循环：12 轮上限 + 轨迹日志
+│   ├── tools.py               # 5 个工具（行情/财务/新闻/公告RAG/战绩）+ 注册进 harness
+│   ├── loop.py                # 薄壳：run_agent_mode / stream_agent_mode
 │   └── __main__.py            # CLI：python -m agent_mode "问题" --code 600519
+│
+├── harness/                   # Agent 运行时层（工具注册/预算/轨迹/评测）
+│   ├── registry.py            # 工具注册表：schema + 超时 + 重试 + 缓存
+│   ├── runtime.py             # ReAct 循环 + 事件流 + 预算守卫
+│   ├── budget.py              # 步数 / token / 墙钟 / 成本
+│   ├── trace.py               # JSONL 轨迹（落盘前脱敏）
+│   ├── context.py             # 历史消息按字符预算裁剪
+│   ├── adapters.py            # LLM 重试 + token 用量提取
+│   └── evals/                 # 用例集 + 确定性打分 + 报告
+│       ├── suites/smoke.jsonl # 14 条回归用例
+│       ├── scorers.py         # must_call / must_contain / max_steps
+│       └── run.py             # CLI：python -m harness.evals.run
 │
 ├── services/                  # 产品层：把分析能力包装成可付费的功能
 │   └── briefing.py            # 简报生成：行情+新闻+公告 → 白话解读（当日缓存）
@@ -391,6 +479,8 @@ stock-prediction-agent/
 │
 └── cache/                     # 本地验证脚本与运行缓存（gitignore 视情况）
 ```
+
+> 逐文件说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（每个文件干什么、改需求该去哪）。
 
 ---
 

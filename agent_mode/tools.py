@@ -153,3 +153,44 @@ TOOL_IMPLS = {
     "search_announcements": _search_announcements_impl,
     "get_track_record": _get_track_record_impl,
 }
+
+
+# ===================== harness 注册 =====================
+# 超时/重试/缓存按数据源特性分别设：行情要防慢接口，财务当天基本不变。
+_TOOL_RUNTIME = {
+    "query_market": dict(timeout_s=25.0, retries=1, cache_ttl_s=60.0),
+    "get_financials": dict(timeout_s=20.0, retries=1, cache_ttl_s=3600.0),
+    "get_news": dict(timeout_s=20.0, retries=1, cache_ttl_s=600.0),
+    "search_announcements": dict(timeout_s=30.0, retries=1, cache_ttl_s=300.0),
+    "get_track_record": dict(timeout_s=10.0, retries=1, cache_ttl_s=60.0),
+}
+
+
+def _schema_of(tool_obj) -> dict:
+    """从 @tool 包装版取参数 schema；取不到就空着（不影响调用）"""
+    try:
+        return tool_obj.args_schema.model_json_schema()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def register_tools() -> list:
+    """把 5 个工具登记进 harness.registry（幂等，重复导入无副作用）"""
+    from harness.registry import register
+
+    for tool_obj in TOOL_SPECS:
+        name = getattr(tool_obj, "name", "")
+        impl = TOOL_IMPLS.get(name)
+        if not name or impl is None:
+            continue
+        register(
+            name=name,
+            description=getattr(tool_obj, "description", ""),
+            impl=impl,
+            schema=_schema_of(tool_obj),
+            **_TOOL_RUNTIME.get(name, {}),
+        )
+    return TOOL_SPECS
+
+
+register_tools()

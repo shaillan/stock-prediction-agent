@@ -36,6 +36,15 @@ class Settings(BaseSettings):
     agent_max_retries: int = 2
     data_fetch_timeout: int = 15  # AKShare 单次调用超时秒数
 
+    # ========== Harness（Agent 运行时） ==========
+    harness_trace_enabled: bool = True   # 每次 Agent 运行是否落轨迹
+    harness_trace_dir: str = "runs"      # 轨迹目录（JSONL，已脱敏）
+    harness_max_tokens: int = 60000      # 单次问答的 token 预算
+    harness_max_seconds: float = 180.0   # 单次问答的墙钟预算
+    # 单价按厂商实际账单填；留 0 表示「未配置」，轨迹里如实显示未知而不是算个假数
+    harness_price_prompt_cny_per_1k: float = 0.0
+    harness_price_completion_cny_per_1k: float = 0.0
+
     # ========== 公告检索 RAG ==========
     rag_enabled: bool = True        # 是否启用公告全文检索
     rag_top_k: int = 3              # 每个研究问题检索的片段数

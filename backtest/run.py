@@ -12,12 +12,15 @@
     python -m backtest.run --periods 2019-2021,2022-2024,2024-2026
     python -m backtest.run --output result.csv              # 导出逐时点明细
 
-两种标签口径:
-    threshold (默认)  涨超 +阈值才算看涨、跌超 -阈值才算看跌，中间算震荡。
-                      贴近"1-5个交易日趋势"的直觉，但死角会让"永远猜震荡"
-                      的基线虚高。
-    direction         纯方向二分类，涨就是涨、跌就是跌，没有死角。
-                      只在信号敢给方向的样本上评估，更公平。
+输出会**同时打印两套口径**，不用手动切换 --label：
+    口径 A（三分类） 涨超 +阈值才算看涨、跌超 -阈值才算看跌，中间算震荡。
+                    贴近"1-5个交易日趋势"的直觉，但对频繁站队的信号有先天惩罚：
+                    市场一大半时间在震荡，敢开口就更容易猜错。表里多一列
+                    「理论上限」，把这份"口径造成的赤字"显式标出来。
+    口径 B（纯方向） 涨就是涨、跌就是跌，只在信号敢给方向的样本上评估。
+                    **判断方向能力请以这一栏为准**。
+
+--label 只影响单信号详细报告展示哪一套口径，不影响排行榜。
 
 注意: 本回测只使用价格与技术指标，不包含新闻/财务/大盘 —— 后三者的
 历史数据接口不可用（只返回最新值），回填会造成前视偏差。
@@ -40,7 +43,7 @@ from loguru import logger
 # ImportError: attempted relative import with no known parent package
 from data.stock_registry import StockRegistry
 from backtest.engine import WARMUP_BUFFER_DAYS, scan_signals
-from backtest.metrics import leaderboard, summarize_by_mode
+from backtest.metrics import leaderboard, relabel, summarize, summarize_direction
 from backtest.signals import ALL_SIGNAL_NAMES, resolve_signals, signal_label
 
 DEFAULT_HISTORY_YEARS = 3
@@ -129,16 +132,21 @@ def run_once(codes, start_date, end_date, args, names, eval_start=None, eval_end
 
     print(leaderboard(
         results, mode=args.label, threshold=args.threshold, horizon=args.horizon,
+        n_stocks=len(codes),
     ))
 
     # 只选了一个信号时，额外打印它的详细报告（按信号分组 / 按股票……）
+    # 两套口径都给：三分类看细节分布，纯方向看真正公平的命中率
     if len(names) == 1:
         only = results[names[0]]
         if not only.empty:
-            print(f"\n【{signal_label(names[0])} 详细报告】\n")
-            print(summarize_by_mode(
-                only, horizon=args.horizon, threshold=args.threshold, mode=args.label,
+            print(f"\n【{signal_label(names[0])} · 口径 A（三分类）详细报告】\n")
+            print(summarize(
+                relabel(only, "threshold", args.threshold),
+                horizon=args.horizon, threshold=args.threshold,
             ))
+            print(f"\n【{signal_label(names[0])} · 口径 B（纯方向，公平口径）详细报告】\n")
+            print(summarize_direction(relabel(only, "direction"), horizon=args.horizon))
 
     return results
 

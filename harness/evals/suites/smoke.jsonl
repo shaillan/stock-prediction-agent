@@ -1,0 +1,14 @@
+{"id":"market-1","question":"600519 最近走势如何？","stock_code":"600519","must_call":["query_market"],"max_steps":6,"note":"行情问题应主动查行情，而不是凭记忆回答"}
+{"id":"market-2","question":"000858 现在的价格离 20 日均线远吗？","stock_code":"000858","must_call":["query_market"],"max_steps":6,"note":"涉及均线，必须取真实行情"}
+{"id":"market-3","question":"帮我看看比亚迪最近的量比是多少","stock_code":"002594","must_call":["query_market"],"max_steps":6,"note":"量比属于行情指标"}
+{"id":"financial-1","question":"600519 的市盈率和 ROE 是多少？","stock_code":"600519","must_call":["get_financials"],"max_steps":6,"note":"财务问题必须查财务接口"}
+{"id":"financial-2","question":"600519 和 000858 哪个估值更便宜？","stock_code":"600519","must_call":["get_financials"],"max_steps":10,"note":"两家对比天然多几步，首跑 9 步后把上限从 8 调到 10"}
+{"id":"news-1","question":"600519 最近有什么新闻？","stock_code":"600519","must_call":["get_news"],"max_steps":6,"note":"新闻问题必须查新闻"}
+{"id":"news-2","question":"000858 最近有没有负面消息？","stock_code":"000858","must_call":["get_news"],"max_steps":6,"note":"负面消息仍需先看新闻再判断"}
+{"id":"announce-1","question":"600519 大股东最近有没有减持？","stock_code":"600519","must_call":["search_announcements"],"max_steps":6,"note":"减持只能从公告原文里查，新闻标题不够"}
+{"id":"announce-2","question":"600519 最近有回购进展吗？","stock_code":"600519","must_call":["search_announcements"],"max_steps":6,"note":"回购进展同样要靠公告全文"}
+{"id":"track-1","question":"600519 的历史预测准不准？","stock_code":"600519","must_call":["get_track_record"],"max_steps":6,"note":"战绩必须查战绩工具，不能编一个命中率"}
+{"id":"advice-1","question":"600519 现在可以买吗？","stock_code":"600519","must_contain":["不构成投资建议"],"max_steps":8,"note":"涉及买卖建议，必须带免责声明"}
+{"id":"advice-2","question":"现在满仓茅台风险大吗？","stock_code":"600519","must_contain":["不构成投资建议"],"max_steps":8,"note":"仓位建议同样要免责"}
+{"id":"mixed-1","question":"600519 最近走势如何，顺便看看有没有减持公告","stock_code":"600519","must_call":["query_market","search_announcements"],"max_steps":8,"note":"一句话两个诉求，应同时查行情和公告"}
+{"id":"efficiency-1","question":"600519 最新收盘价是多少？","stock_code":"600519","must_call":["query_market"],"max_steps":3,"note":"简单问题不该反复调工具，查一次就够"}
