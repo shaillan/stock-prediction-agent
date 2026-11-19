@@ -142,17 +142,25 @@ def _render_quote_strip(stocks: list) -> None:
 
 def _render_toolbar(q: dict, stocks: list, llm_cfg: dict) -> None:
     st.write("")
-    c1, c2, c3 = st.columns([1.05, 1.5, 1.15], gap="medium")
+    c1, c2 = st.columns([1.0, 2.0], gap="medium")
 
     with c1:
         _render_plan_card(q)
     with c2:
-        _render_manage(stocks, q)
-    with c3:
-        force = st.checkbox("忽略今日缓存", value=False,
-                            help="勾选后强制重新调用模型；不勾选时同一天只生成一次")
-        if st.button("📰 生成今日简报", type="primary", use_container_width=True):
-            _generate(stocks, llm_cfg, force)
+        # 勾选和按钮横排，避免上下堆叠把右栏撑高
+        cc1, cc2 = st.columns([1.3, 1.0], gap="medium",
+                              vertical_alignment="center")
+        with cc1:
+            force = st.checkbox("忽略今日缓存", value=False,
+                                help="勾选后强制重新调用模型；不勾选时同一天只生成一次")
+        with cc2:
+            if st.button("📰 生成今日简报", type="primary", use_container_width=True):
+                _generate(stocks, llm_cfg, force)
+
+    # 管理自选股单独占一整行：塞进上面的三列时只有 1/3 页宽，
+    # 内部再拆三列，输入框会窄到几十像素，按钮文字都被挤成两行。
+    st.write("")
+    _render_manage(stocks, q)
 
 
 def _render_plan_card(q: dict) -> None:
@@ -220,10 +228,12 @@ def _open_paywall() -> None:
 def _render_manage(stocks: list, q: dict) -> None:
     with st.expander(f"管理自选股（{len(stocks)} 只）", expanded=not stocks):
         with st.form("add_stock_form", clear_on_submit=True):
-            c1, c2, c3 = st.columns([1.1, 1.6, 0.9])
-            code = c1.text_input("股票代码", placeholder="600519",
-                                 label_visibility="collapsed")
-            name = c2.text_input("名称（可选）", placeholder="名称（可选）",
+            c1, c2, c3 = st.columns([1.3, 2.0, 0.8], gap="medium",
+                                    vertical_alignment="bottom")
+            code = c1.text_input("股票代码", placeholder="如 600519",
+                                 label_visibility="collapsed", max_chars=6)
+            name = c2.text_input("名称（可选）",
+                                 placeholder="名称（可选，留空自动补全）",
                                  label_visibility="collapsed")
             submitted = c3.form_submit_button("添加", use_container_width=True)
 
