@@ -14,6 +14,7 @@ from loguru import logger
 
 from config import settings
 from ui.styles import apply_custom_css
+from ui.components.meteor import render_meteor_shower
 from ui.components.sidebar import (
     render_llm_config, render_mode_selector, render_sidebar,
 )
@@ -35,6 +36,9 @@ st.set_page_config(
 # 应用自定义样式
 apply_custom_css()
 
+# 背景流星雨在 main() 里渲染 —— 它依赖侧边栏的「✨ 流星雨背景」开关，
+# 必须等开关控件先跑完才知道该不该画这一层。
+
 
 # ===== 初始化 Session State =====
 def init_session_state():
@@ -47,6 +51,7 @@ def init_session_state():
         "technical_indicators": None,
         "progress_status": "idle",
         "progress_errors": [],
+        "realtime_quote": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -58,18 +63,45 @@ init_session_state()
 
 # ===== 主页面 =====
 def _render_topbar(config: dict) -> None:
-    """页面标题区（视觉稿 .term-topbar）"""
+    """页面标题区（视觉稿 .hero）"""
     name = config.get("stock_name") or ""
     code = config.get("stock_code") or ""
+    quote = st.session_state.get("realtime_quote") or {}
+    price = quote.get("price")
+    pct = quote.get("change_pct")
+
+    price_html = ""
+    if isinstance(price, (int, float)):
+        if isinstance(pct, (int, float)) and pct:
+            cls = "up" if pct > 0 else "down"
+            arrow = "▲" if pct > 0 else "▼"
+            sign = "+" if pct > 0 else "−"
+            price_html = (
+                f'<div class="hero-price">'
+                f'<div class="p">{price:,.2f}</div>'
+                f'<div class="d {cls}">{arrow} {sign}{abs(pct):.2f}%</div>'
+                f'</div>'
+            )
+        else:
+            price_html = f'<div class="hero-price"><div class="p">{price:,.2f}</div></div>'
+
     st.markdown(
         f"""
-        <div class="term-topbar">
-          <div>
+        <div class="hero">
+          <div class="hero-main">
+            <div class="hero-eyebrow">Stock Intelligence Terminal</div>
             <h1>个股深度分析</h1>
-            <p class="sub">{name} {code} · {config.get("start_date", "")}
-             至 {config.get("end_date", "")}</p>
+            <p class="sub">
+              <span>{name or "未选择股票"}</span>
+              <span class="dot"></span>
+              <span>{code}</span>
+              <span class="dot"></span>
+              <span>{config.get("start_date", "")} → {config.get("end_date", "")}</span>
+            </p>
           </div>
-          <span class="term-badge">技术面 · 消息面 · 基本面</span>
+          <div class="hero-side">{price_html}
+            <span class="term-badge"><span class="live"></span>技术面 · 消息面 · 基本面</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -129,9 +161,53 @@ def _render_kpi_row(indicators: dict) -> None:
     st.write("")
 
 
+def _render_empty_state() -> None:
+    """未分析时的引导卡"""
+    with st.container(border=True):
+        st.markdown(
+            """
+            <div class="empty-hero">
+              <div class="ico">📈</div>
+              <h3>准备就绪，等待你的第一只股票</h3>
+              <p>在左侧选股、配好模型后，点「🚀 开始分析」。<br>
+                 整个流程约 30 秒 – 2 分钟，AI 预测不构成投资建议。</p>
+              <div class="flow-grid">
+                <div class="flow-item">
+                  <div class="n">STEP 01</div>
+                  <div class="t">数据采集</div>
+                  <div class="d">行情、财务、新闻、公告</div>
+                </div>
+                <div class="flow-item">
+                  <div class="n">STEP 02</div>
+                  <div class="t">三路并行</div>
+                  <div class="d">技术指标 / 新闻情绪 / 公告 RAG</div>
+                </div>
+                <div class="flow-item">
+                  <div class="n">STEP 03</div>
+                  <div class="t">综合预测</div>
+                  <div class="d">方向与置信度，并标出缺失信号</div>
+                </div>
+                <div class="flow-item">
+                  <div class="n">STEP 04</div>
+                  <div class="t">报告生成</div>
+                  <div class="d">汇总成可读的分析报告</div>
+                </div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def main():
     # ===== 功能模式 =====
     mode = render_mode_selector()
+
+    # ===== 背景流星雨 =====
+    # 开关在侧边栏（render_mode_selector 里已渲染），这里读它的状态决定画不画。
+    # 关掉时整层不渲染 —— 流星、星点、极光雾一起消失，只剩纯极光渐变背景。
+    render_meteor_shower(enabled=st.session_state.get("meteor_enabled", True))
+
     if mode == "briefing":
         llm_cfg = render_llm_config()
         from ui.components.briefing import render_briefing_page
@@ -150,20 +226,7 @@ def main():
     # ===== 主内容区 =====
     # 如果没有分析结果，显示欢迎信息
     if not st.session_state.analysis_done:
-        with st.container(border=True):
-            st.markdown('<p class="section-label">开始</p>', unsafe_allow_html=True)
-            st.markdown(
-                """
-在左侧选股、配好模型后，点 **「🚀 开始分析」**。程序会依次完成：
-
-1. **数据采集** — 行情、财务、新闻、公告
-2. **三路并行** — 技术指标解读 / 新闻情绪 / 公告全文检索（RAG）
-3. **综合预测** — 给方向与置信度，并**明确标出缺了哪一路信号**
-4. **报告生成** — 汇总成可读的报告
-
-> 整个流程约 30 秒–2 分钟。AI 预测不构成投资建议。
-                """
-            )
+        _render_empty_state()
 
     # ===== 点击分析按钮 =====
     if config["run_clicked"]:
@@ -241,6 +304,7 @@ def main():
                 # 从K线直接提取实时行情（无需额外调接口）
                 quote = client.get_realtime_quote(config["stock_code"], kline_df=kline_df)
                 if quote:
+                    st.session_state.realtime_quote = quote
                     config["stock_name"] = quote.get("name", config["stock_name"])
                     st.write(f"✅ 最新价: {quote.get('price')} (涨跌: {quote.get('change_pct', 0):+.2f}%)")
 
@@ -304,7 +368,10 @@ def main():
         _render_kpi_row(agent_state.get("technical_indicators"))
 
         # K线图
-        st.markdown("## K 线与技术指标")
+        st.markdown(
+            '<div class="section-label"><span class="n">02</span>K 线与技术指标</div>',
+            unsafe_allow_html=True,
+        )
 
         kline_data = st.session_state.kline_df
         if kline_data is not None and not kline_data.empty:
@@ -358,10 +425,11 @@ def main():
 def render_footer():
     st.markdown(
         """
-        <div style="text-align:center; color:#8a94a6; font-size:0.75rem;
-                    padding:1rem; border-top:1px solid #232a36;">
-            <p>股票智能预测工作流 · LangGraph + LLM</p>
-            <p>本工具仅供学习研究使用，AI 预测不构成投资建议。股市有风险，投资需谨慎。</p>
+        <div style="text-align:center; color:#6f7c92; font-size:0.75rem;
+                    padding:1.4rem 1rem 0.6rem; margin-top:2rem;
+                    border-top:1px solid rgba(255,255,255,.07);">
+            <p style="margin:0 0 4px;">股票智能预测工作流 · LangGraph + LLM</p>
+            <p style="margin:0;">本工具仅供学习研究使用，AI 预测不构成投资建议。股市有风险，投资需谨慎。</p>
         </div>
         """,
         unsafe_allow_html=True,

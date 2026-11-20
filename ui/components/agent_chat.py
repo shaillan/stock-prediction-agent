@@ -77,12 +77,19 @@ def _render_topbar() -> None:
     code = st.session_state.get("agent_stock", "")
     st.markdown(
         f"""
-        <div class="term-topbar">
-          <div>
+        <div class="hero">
+          <div class="hero-main">
+            <div class="hero-eyebrow">Agentic Research Chat</div>
             <h1>智能问答</h1>
-            <p class="sub">模型自主调用工具 · 默认研究 {code or '—'}</p>
+            <p class="sub">
+              <span>模型自主调用工具</span>
+              <span class="dot"></span>
+              <span>默认研究 {code or '—'}</span>
+            </p>
           </div>
-          <span class="term-badge">Agent · 边走边查</span>
+          <div class="hero-side">
+            <span class="term-badge"><span class="live"></span>Agent · 边走边查</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,

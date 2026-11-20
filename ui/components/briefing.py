@@ -94,13 +94,21 @@ def _render_topbar(stocks: list) -> None:
     weekday = "一二三四五六日"[today.weekday()]
     st.markdown(
         f"""
-        <div class="term-topbar">
-          <div>
+        <div class="hero">
+          <div class="hero-main">
+            <div class="hero-eyebrow">Daily Watchlist Briefing</div>
             <h1>自选股简报</h1>
-            <p class="sub">{today:%Y-%m-%d} 周{weekday} · {len(stocks)} 只自选股
-             · 数据来源 巨潮资讯 / 东方财富</p>
+            <p class="sub">
+              <span>{today:%Y-%m-%d} 周{weekday}</span>
+              <span class="dot"></span>
+              <span>{len(stocks)} 只自选股</span>
+              <span class="dot"></span>
+              <span>数据来源 巨潮资讯 / 东方财富</span>
+            </p>
           </div>
-          <span class="term-badge"><span class="live"></span>只做解读，不预测涨跌</span>
+          <div class="hero-side">
+            <span class="term-badge"><span class="live"></span>只做解读，不预测涨跌</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,

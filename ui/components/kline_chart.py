@@ -137,7 +137,7 @@ def render_kline_chart(
                 go.Scatter(
                     x=date_arr, y=boll_upper,
                     name="布林上轨",
-                    line=dict(width=0.8, color="#4a5468"),
+                    line=dict(width=0.8, color="rgba(255,255,255,0.22)"),
                     showlegend=True,
                 ),
                 row=1, col=1,
@@ -146,9 +146,9 @@ def render_kline_chart(
                 go.Scatter(
                     x=date_arr, y=boll_lower,
                     name="布林下轨",
-                    line=dict(width=0.8, color="#4a5468"),
+                    line=dict(width=0.8, color="rgba(255,255,255,0.22)"),
                     fill="tonexty",
-                    fillcolor="rgba(74, 84, 104, 0.05)",
+                    fillcolor="rgba(124,140,255,0.05)",
                     showlegend=True,
                 ),
                 row=1, col=1,

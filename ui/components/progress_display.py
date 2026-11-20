@@ -1,7 +1,6 @@
 """
 步骤进度指示器组件 - 显示工作流 5 步进度
 """
-import time
 import streamlit as st
 from typing import Optional
 
@@ -35,40 +34,29 @@ def render_progress(status: str = "idle", errors: Optional[list] = None) -> None
     }
 
     current_idx = status_order.get(status, 0)
+    finished = status in ("done", "error")
 
-    # 渲染步骤指示器
-    cols = st.columns(len(STEPS))
-
+    parts = []
     for i, step in enumerate(STEPS):
-        with cols[i]:
-            if i < current_idx:
-                # 已完成
-                st.markdown(f"""
-                <div style="text-align:center">
-                    <div class="step-dot step-dot-done">✓</div>
-                    <div class="step-label">{step['icon']} {step['label']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            elif i == current_idx and status != "done" and status != "error":
-                # 进行中
-                st.markdown(f"""
-                <div style="text-align:center">
-                    <div class="step-dot step-dot-active" style="animation:pulse 1.5s infinite">⋯</div>
-                    <div class="step-label" style="font-weight:700">{step['icon']} {step['label']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                # 等待中
-                st.markdown(f"""
-                <div style="text-align:center">
-                    <div class="step-dot step-dot-pending">○</div>
-                    <div class="step-label">{step['icon']} {step['label']}</div>
-                </div>
-                """, unsafe_allow_html=True)
+        if i < current_idx or finished:
+            dot_cls, mark, lab_cls = "step-dot step-dot-done", "✓", ""
+        elif i == current_idx:
+            dot_cls, mark, lab_cls = "step-dot step-dot-active", "⋯", " active"
+        else:
+            dot_cls, mark, lab_cls = "step-dot", str(i + 1), ""
+        step_cls = "step done" if i < current_idx else "step"
+        parts.append(
+            f'<div class="{step_cls}">'
+            f'<div class="{dot_cls}">{mark}</div>'
+            f'<div class="step-label{lab_cls}">{step["icon"]} {step["label"]}</div>'
+            f'</div>'
+        )
 
-    # 显示错误
+    st.markdown(f'<div class="stepper">{"".join(parts)}</div>',
+                unsafe_allow_html=True)
+
     if errors and len(errors) > 0:
-        st.markdown("---")
+        st.write("")
         with st.expander(f"⚠️ 分析过程中出现 {len(errors)} 个警告/错误", expanded=False):
             for e in errors:
                 st.warning(e)

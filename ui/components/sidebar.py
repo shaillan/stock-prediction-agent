@@ -1,9 +1,49 @@
 """
-侧边栏组件 - 股票选择、日期范围、LLM配置
+侧边栏组件 - 股票选择、日期范围、LLM 配置
 """
 import streamlit as st
 from datetime import date, timedelta
 from data.stock_registry import StockRegistry
+
+
+def _brand() -> None:
+    """侧边栏顶部品牌块"""
+    st.markdown(
+        """
+        <div class="brand">
+          <div class="brand-mark">📈</div>
+          <div class="brand-text">
+            <b>Stock Terminal</b>
+            <span>AI EQUITY RESEARCH</span>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_meteor_toggle() -> bool:
+    """侧边栏「✨ 流星雨背景」开关。
+
+    放在 `render_mode_selector` 里，三种模式（个股分析 / 自选股简报 / 智能问答）
+    都能看到、都能关。状态存在 `st.session_state.meteor_enabled`，
+    Streamlit 的 toggle 是即时生效的：点一下立刻 rerun，背景层随之出现/消失，
+    不碰任何其它控件，也不影响任何业务逻辑。
+
+    Returns:
+        bool: 当前是否开启流星雨背景（默认 True）。
+    """
+    if "meteor_enabled" not in st.session_state:
+        st.session_state.meteor_enabled = True
+
+    with st.sidebar:
+        st.toggle(
+            "✨ 流星雨背景",
+            key="meteor_enabled",
+            help="关闭后流星与星点完全隐藏，页面回到纯极光渐变背景。\n"
+                 "纯装饰效果，不影响任何功能与数据。",
+        )
+    return bool(st.session_state.meteor_enabled)
 
 
 def render_mode_selector() -> str:
@@ -13,6 +53,7 @@ def render_mode_selector() -> str:
     挤在一个页面里会让侧边栏出现大量「在这个模式下没意义」的输入框。
     """
     with st.sidebar:
+        _brand()
         st.markdown("## 🧭 功能模式")
         mode = st.radio(
             "功能模式",
@@ -20,6 +61,9 @@ def render_mode_selector() -> str:
             label_visibility="collapsed",
             key="app_mode",
         )
+        st.markdown("---")
+        # 背景特效开关：三种模式共用，所以放在这里而不是 render_sidebar
+        render_meteor_toggle()
         st.markdown("---")
     if mode.startswith("🔔"):
         return "briefing"
