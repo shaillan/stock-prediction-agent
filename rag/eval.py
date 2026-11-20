@@ -114,6 +114,9 @@ def evaluate_case(case: dict, hits: List[dict], k: int) -> dict:
         "precision": len(matched) / len(ranked) if ranked else 0.0,
         "hit": 1.0 if matched else 0.0,
         "rr": rr,
+        # top-k 里不同标题占多少：1.0 = 每个名额都来自不同公告
+        # 这个值低说明某一两份公告把名额占满了，别的公告没机会露脸
+        "distinct_ratio": len(ranked) / len(top) if top else 0.0,
     }
 
 
@@ -171,6 +174,7 @@ def summarize(results: List[dict]) -> dict:
         "precision": sum(r["precision"] for r in valid) / n if n else 0.0,
         "hit": sum(r["hit"] for r in valid) / n if n else 0.0,
         "mrr": sum(r["rr"] for r in valid) / n if n else 0.0,
+        "distinct_ratio": sum(r.get("distinct_ratio", 0.0) for r in valid) / n if n else 0.0,
         "micro_recall": gold_matched / gold_total if gold_total else 0.0,
         "gold_total": gold_total,
         "gold_matched": gold_matched,
@@ -247,7 +251,7 @@ def main(argv=None) -> int:
     print(f"Recall@{k}    = {summary['recall']:.2f}（macro） / "
           f"{summary['micro_recall']:.2f}（micro：{summary['gold_matched']}/{summary['gold_total']}）")
     print(f"Precision@{k} = {summary['precision']:.2f} · Hit@{k} = {summary['hit']:.2f} · "
-          f"MRR = {summary['mrr']:.2f}")
+          f"MRR = {summary['mrr']:.2f} · 不同标题率 = {summary['distinct_ratio']:.2f}")
     if summary["errors"]:
         print(f"⚠️ 有 {summary['errors']} 条运行失败，已排除在汇总外")
 

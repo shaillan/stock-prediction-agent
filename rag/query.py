@@ -17,10 +17,10 @@
 详见 rag/lexical.py 与 rag/TUTORIAL.md。
 """
 from functools import lru_cache
-from typing import List, Tuple
+from typing import Dict, List, NamedTuple
 
 from .index import DEFAULT_COLLECTION, load_collection, load_embedding_model
-from .lexical import BM25, rrf_fuse
+from .lexical import BM25, expand_query, parse_date_hint, rrf_scores
 
 # bge v1.5 建议：查询句前面加这个指令，检索效果更好
 _QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："
@@ -29,24 +29,96 @@ _QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："
 _POOL = 50
 
 
+class Corpus(NamedTuple):
+    """一次加载、反复复用的全库视图"""
+    ids: List[str]
+    docs: List[str]
+    metas: List[dict]
+    id2idx: Dict[str, int]
+    bm25: BM25                 # 正文关键词
+    title_bm25: BM25           # 标题关键词（一份公告一条，不按块重复）
+    doc_of_chunk: List[int]    # 每个块属于哪个标题
+    chunks_by_doc: Dict[int, List[int]]  # 标题 → 它名下所有块的下标
+
+
 @lru_cache(maxsize=8)
-def _load_corpus(persist_dir: str, collection_name: str) -> Tuple:
+def _load_corpus(persist_dir: str, collection_name: str) -> Corpus:
     """
     读全库文档并建好 BM25 索引，缓存起来。
 
     为什么要缓存：流水线一次要跑 6 个固定问题，BM25 建索引（含 jieba 分词）
     每问一次重建 6 次是纯浪费。集合内容变了要调 clear_corpus_cache()。
+
+    这里额外建一份"标题 BM25"：标题只在 metadata 里，正文往往一次都不出现
+    （例如《重大事项公告》的正文不会再说"重大事项"），不给它单独建索引，
+    这类问题就永远捞不上来。
     """
     col = load_collection(persist_dir, collection_name)
     data = col.get(include=["documents", "metadatas"])
     ids, docs, metas = data["ids"], data["documents"], data["metadatas"]
     id2idx = {doc_id: i for i, doc_id in enumerate(ids)}
-    return ids, docs, metas, id2idx, BM25(docs)
+
+    title_to_idx: Dict[str, int] = {}
+    title_texts: List[str] = []
+    doc_of_chunk: List[int] = []
+    chunks_by_doc: Dict[int, List[int]] = {}
+    for ci, meta in enumerate(metas):
+        title = (meta or {}).get("title", "")
+        ti = title_to_idx.get(title)
+        if ti is None:
+            ti = len(title_texts)
+            title_to_idx[title] = ti
+            title_texts.append(title)
+        doc_of_chunk.append(ti)
+        chunks_by_doc.setdefault(ti, []).append(ci)
+
+    return Corpus(
+        ids=ids,
+        docs=docs,
+        metas=metas,
+        id2idx=id2idx,
+        bm25=BM25(docs),
+        title_bm25=BM25(title_texts),
+        doc_of_chunk=doc_of_chunk,
+        chunks_by_doc=chunks_by_doc,
+    )
 
 
 def clear_corpus_cache() -> None:
     """重建索引后必须调用，否则 BM25 还缓存着旧语料"""
     _load_corpus.cache_clear()
+
+
+# 以下三个权重都以"RRF 第 1 名的分数 1/k"为单位：
+# 标题满分 ≈ 额外赢下一路检索的第 1 名，日期命中 ≈ 半路。
+_RRF_K = 60
+_TITLE_BOOST = 0.6
+_DATE_BOOST = 0.5
+_TITLE_MIN_RATIO = 0.5  # 标题得分不到最高分一半的，不算命中
+
+
+def _diversify(ranked: List[int], titles: List[str], top_k: int) -> List[int]:
+    """给同一份公告设名额上限：先每篇 1 块，再放宽到 2 块，最后兜底填满。
+
+    为什么需要：一份 19 块的公告可以把 top-3 全部占满（实测《法律意见书》
+    就干过），别的公告再相关也露不出脸。
+    最后一轮用 top_k 兜底，是防止整个库只有一两份公告时返回不足 k 条。
+    """
+    max_per_title = max(2, top_k // 5)
+    picked: List[int] = []
+    counts: Dict[str, int] = {}
+    for limit in (1, max_per_title, top_k):
+        for idx in ranked:
+            if idx in picked:
+                continue
+            title = titles[idx]
+            if counts.get(title, 0) >= limit:
+                continue
+            picked.append(idx)
+            counts[title] = counts.get(title, 0) + 1
+            if len(picked) >= top_k:
+                return picked
+    return picked
 
 
 def retrieve(
@@ -61,6 +133,12 @@ def retrieve(
     返回最相关的 top_k 个片段，附标题、日期、相似度距离、（混合检索时的）BM25 得分。
 
     hybrid=True 走"向量 + 关键词"融合；False 则退回纯向量（用来做对照）。
+
+    混合模式下比单纯 RRF 多做了三件事（都不需要重建索引）：
+      1. 同义词扩展，只作用于关键词/标题两路，向量仍用原句；
+      2. 标题单独建 BM25：正文里不出现、标题里才有的词（"重大事项"）也能命中；
+      3. 问题里提到"7月"这类日期时，给当月公告软加权（不做硬过滤）。
+    最后按"每份公告最多占几个名额"做一次多样性重排。
     """
     collection = load_collection(persist_dir, collection_name)
     total = collection.count()
@@ -81,39 +159,72 @@ def retrieve(
     vec_docs = res["documents"][0]
     vec_metas = res["metadatas"][0]
 
-    vec_hits = [
-        {
-            "text": vec_docs[i],
-            "title": (vec_metas[i] or {}).get("title", ""),
-            "date": (vec_metas[i] or {}).get("date", ""),
-            "distance": vec_dists[i],  # 越小越相似
-            "bm25": None,
-        }
-        for i in range(len(vec_ids))
-    ]
+    vec_titles = [(m or {}).get("title", "") for m in vec_metas]
 
     if not hybrid:
-        return vec_hits[:top_k]
+        order = _diversify(list(range(len(vec_ids))), vec_titles, top_k)
+        return [
+            {
+                "text": vec_docs[i],
+                "title": vec_titles[i],
+                "date": (vec_metas[i] or {}).get("date", ""),
+                "distance": vec_dists[i],  # 越小越相似
+                "bm25": None,
+            }
+            for i in order
+        ]
 
-    # ---- 关键词这一路 ----
-    ids, docs, metas, id2idx, bm25 = _load_corpus(persist_dir, collection_name)
-    lex_scores = bm25.score(question)
-    lex_top = sorted(range(len(docs)), key=lambda i: -lex_scores[i])[:pool]
+    corpus = _load_corpus(persist_dir, collection_name)
+    lex_query = expand_query(question)
+    lex_scores = corpus.bm25.score(lex_query)
+    lex_top = sorted(range(len(corpus.docs)), key=lambda i: -lex_scores[i])[:pool]
 
-    dist_by_idx = {id2idx[i]: d for i, d in zip(vec_ids, vec_dists) if i in id2idx}
+    dist_by_idx = {corpus.id2idx[i]: d for i, d in zip(vec_ids, vec_dists) if i in corpus.id2idx}
 
-    # RRF 融合两路排名
-    fused = rrf_fuse([[id2idx[i] for i in vec_ids if i in id2idx], lex_top])[:top_k]
+    scores = rrf_scores(
+        [[corpus.id2idx[i] for i in vec_ids if i in corpus.id2idx], lex_top],
+        k=_RRF_K,
+    )
+    unit = 1.0 / _RRF_K
+
+    # 标题这一路：只给标题得分接近最高分的文档加分，
+    # 否则"股东""公告"这种通用词会把半库都抬上来。
+    title_scores = corpus.title_bm25.score(lex_query)
+    top_title = max(title_scores) if title_scores else 0.0
+    if top_title > 0:
+        for ti, score in enumerate(title_scores):
+            if score <= 0 or score < _TITLE_MIN_RATIO * top_title:
+                continue
+            bonus = _TITLE_BOOST * (score / top_title) * unit
+            for ci in corpus.chunks_by_doc.get(ti, ()):
+                scores[ci] = scores.get(ci, 0.0) + bonus
+
+    # 日期这一路：软加权。硬过滤会误杀"一季度"（公告 4 月才发）。
+    year, month = parse_date_hint(question)
+    if month or year:
+        for ci in list(scores):
+            date = (corpus.metas[ci] or {}).get("date", "")
+            if not date:
+                continue
+            if month and date[5:7] != month:
+                continue
+            if year and date[:4] != year:
+                continue
+            scores[ci] += _DATE_BOOST * unit
+
+    ranked = sorted(scores, key=lambda i: -scores[i])
+    titles = [(m or {}).get("title", "") for m in corpus.metas]
+    picked = _diversify(ranked, titles, top_k)
 
     return [
         {
-            "text": docs[i],
-            "title": (metas[i] or {}).get("title", ""),
-            "date": (metas[i] or {}).get("date", ""),
+            "text": corpus.docs[i],
+            "title": titles[i],
+            "date": (corpus.metas[i] or {}).get("date", ""),
             "distance": dist_by_idx.get(i, float("nan")),  # 纯关键词捞上来的可能没向量距离
             "bm25": lex_scores[i],
         }
-        for i in fused
+        for i in picked
     ]
 
 

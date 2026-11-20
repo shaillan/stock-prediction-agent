@@ -90,6 +90,7 @@ Streamlit 界面 (ui/ + main.py)
 | `evals/scorers.py` | 用例打分：该调的工具调没调、该说的免责声明说没说、步数超没超 |
 | `evals/run.py` | 评测运行器 `python -m harness.evals.run` |
 | `evals/suites/smoke.jsonl` | 14 条回归用例 |
+| [`TUTORIAL.md`](../harness/TUTORIAL.md) | harness 教程：事件契约、预算语义、轨迹排查、加工具/加用例 |
 
 > `harness/__init__.py` 只做延迟导出，不承载逻辑。
 

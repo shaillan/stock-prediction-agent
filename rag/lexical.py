@@ -22,7 +22,8 @@ BM25 相比"数几个词命中"多做了两件事，正是它的价值：
   2. 长度归一化：长文档天生覆盖更多词，要按长度惩罚（用 b 压住）
 """
 import math
-from typing import Dict, List, Sequence, Tuple
+import re
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import jieba
 
@@ -40,6 +41,58 @@ STOPWORDS = {
     "近期", "最近", "目前", "已经", "正在", "并", "而", "则", "以", "从", "到", "向",
     "给", "让", "使", "得", "地", "着", "过", "们", "个", "些", "等", "被",
 }
+
+
+# 领域词：不加的话 jieba 会把"董事会秘书"切成"董事会/秘书"，
+# 查询和公告两边切法不一致就永远匹配不上。只影响分词，不影响向量库。
+for _word in ("董事会秘书", "董秘", "回购股份", "减持计划", "增持计划",
+              "权益分派", "利润分配", "业绩说明会", "重大事项", "职工董事"):
+    jieba.add_word(_word)
+
+# 同义词：只用于关键词/标题两路（向量那一路保留原句，避免语义被稀释）
+SYNONYMS = {
+    "一季度": ("第一季度",),
+    "第一季度": ("一季度",),
+    "半年报": ("半年度报告",),
+    "中报": ("半年度报告",),
+    "董秘": ("董事会秘书",),
+    "董事会秘书": ("董秘",),
+    "分红": ("利润分配", "权益分派"),
+    "回购": ("股份回购",),
+    "业绩说明会": ("业绩发布会",),
+    # 问"通过了哪些议案"，答案在《…决议公告》里，不在会议资料或通知里
+    "议案": ("决议", "表决结果"),
+}
+
+_YEAR_RE = re.compile(r"(\d{4})\s*年")
+_MONTH_RE = re.compile(r"(\d{1,2})\s*月")
+
+
+def expand_query(question: str) -> str:
+    """把同义词追加到查询后面（追加而非替换，原词保留）"""
+    question = question or ""
+    extras: List[str] = []
+    for word, alts in SYNONYMS.items():
+        if word in question:
+            for alt in alts:
+                if alt not in question and alt not in extras:
+                    extras.append(alt)
+    return f"{question} {' '.join(extras)}" if extras else question
+
+
+def parse_date_hint(question: str) -> Tuple[Optional[str], Optional[str]]:
+    """从问题里抠出 (年, 月)。
+
+    月份一定取；年份只在同时出现月份时才用。
+    为什么要这个限制："2025年度分红"说的是报告期，不是发布日期，
+    拿它按日期加权会把 2026 年的实施公告压下去。
+    """
+    q = question or ""
+    month_match = _MONTH_RE.search(q)
+    month = f"{int(month_match.group(1)):02d}" if month_match else None
+    year_match = _YEAR_RE.search(q)
+    year = year_match.group(1) if (year_match and month) else None
+    return year, month
 
 
 def _is_content(token: str) -> bool:
@@ -117,6 +170,19 @@ class BM25:
         return hits[:top_terms]
 
 
+def rrf_scores(rankings: Sequence[List[int]], k: int = 60) -> Dict[int, float]:
+    """RRF 的分数本身。
+
+    单独抽出来，是为了让调用方在融合之后还能加"标题命中""日期命中"
+    这类额外分数——只拿排序结果就没法再加权重了。
+    """
+    fused: Dict[int, float] = {}
+    for ranking in rankings:
+        for rank, idx in enumerate(ranking):
+            fused[idx] = fused.get(idx, 0.0) + 1.0 / (k + rank)
+    return fused
+
+
 def rrf_fuse(rankings: Sequence[List[int]], k: int = 60) -> List[int]:
     """
     倒数排名融合（Reciprocal Rank Fusion）——把多路检索结果合成一路。
@@ -127,8 +193,5 @@ def rrf_fuse(rankings: Sequence[List[int]], k: int = 60) -> List[int]:
     直接相加要调一个说不清道理的权重。RRF 只看"排第几"，不需要归一化、
     不用调参，是工业界混合检索的默认做法（k=60 是原论文推荐值）。
     """
-    fused: Dict[int, float] = {}
-    for ranking in rankings:
-        for rank, idx in enumerate(ranking):
-            fused[idx] = fused.get(idx, 0.0) + 1.0 / (k + rank)
+    fused = rrf_scores(rankings, k)
     return sorted(fused, key=lambda i: -fused[i])

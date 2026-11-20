@@ -164,6 +164,8 @@ python -m harness.evals.run --limit 3 --no-trace
 
 > 📌 为什么不用 LangSmith / Langfuse：本地 JSONL 零依赖、可 grep、可进 gitignore；真需要可视化时，`Tracer._append` 就是一个现成的导出接口。
 
+> 📖 **完整教程**：[`harness/TUTORIAL.md`](harness/TUTORIAL.md) —— 事件契约、循环怎么转、预算的 0/None 语义、轨迹怎么查、怎么加工具和评测用例、已知遗留。
+
 **结论溯源卡**（`ui/components/trace_card.py`）：智能问答页每条回答下面挂一张可展开的卡，三层信息全部来自 `tool_end` 事件：
 
 - **数据来源**：每次工具调用的参数、耗时、是否命中缓存、重试次数、**完整原始返回**
@@ -462,6 +464,7 @@ stock-prediction-agent/
 │   ├── trace.py               # JSONL 轨迹（落盘前脱敏）
 │   ├── context.py             # 历史消息按字符预算裁剪
 │   ├── adapters.py            # LLM 重试 + token 用量提取
+│   ├── TUTORIAL.md            # harness 教程：事件/预算/轨迹/评测怎么用
 │   └── evals/                 # 用例集 + 确定性打分 + 报告
 │       ├── suites/smoke.jsonl # 14 条回归用例
 │       ├── scorers.py         # must_call / must_contain / max_steps

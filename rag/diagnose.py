@@ -80,7 +80,9 @@ def diagnose(
     near = sum(1 for v in values if v <= top1 + band)
 
     # ---- 关键词这一路 + 融合 ----
-    c_ids, c_docs, c_metas, id2idx, bm25 = _load_corpus(persist_dir, collection_name)
+    corpus = _load_corpus(persist_dir, collection_name)
+    c_ids, c_docs, c_metas = corpus.ids, corpus.docs, corpus.metas
+    id2idx, bm25 = corpus.id2idx, corpus.bm25
     lex_scores = bm25.score(question)
     lex_ranked = sorted(range(len(c_docs)), key=lambda i: -lex_scores[i])
 
@@ -150,7 +152,9 @@ def render(report: Dict) -> str:
     lines.append(f"    靠这些词得分：{terms}")
 
     lines.append("")
-    lines.append("  【融合后 top-k】（RRF 把两路排名合并）")
+    lines.append("  【融合后 top-k】（原始两路 RRF）")
+    lines.append("    注：这里刻意不叠加标题/日期加权和每标题名额限制，"
+                 "只想看两路各自的信号强弱；真实检索结果以 rag.cli retrieve 为准")
     lines.append(f"    {'文档':<40} {'向量排名':>8} {'词排名':>7} {'向量距离':>8} {'BM25':>7}")
     for i, h in enumerate(report["hits"], 1):
         d = h["distance"]
